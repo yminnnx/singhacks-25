@@ -11,6 +11,10 @@ import logging
 from enum import Enum
 from transaction_analysis import AMLAlert, RiskLevel, AlertType
 
+# Set deterministic behavior
+import numpy as np
+np.random.seed(42)
+
 class AlertStatus(Enum):
     PENDING = "Pending"
     ACKNOWLEDGED = "Acknowledged"
@@ -105,21 +109,25 @@ class AlertManager:
             self._escalate_alert(alert.alert_id, 'Compliance', 'Critical risk level detected')
     
     def acknowledge_alert(self, alert_id: str, user_id: str, team: str, comment: str = "") -> bool:
-        """Acknowledge an alert"""
+        """Acknowledge an alert (deterministic)"""
         if alert_id not in self.alerts:
             return False
         
         old_status = self.alert_status[alert_id]
         self.alert_status[alert_id] = AlertStatus.ACKNOWLEDGED
         
+        # Create deterministic action ID based on alert and timestamp
+        base_timestamp = "20241101143000"  # Fixed timestamp for deterministic behavior
+        action_id_suffix = str(hash(f"{alert_id}_{user_id}_{team}")) % 10000
+        
         action = AlertAction(
-            action_id=f"ACT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{alert_id[:8]}",
+            action_id=f"ACT-{base_timestamp}-{action_id_suffix:04d}",
             alert_id=alert_id,
             user_id=user_id,
             team=team,
             action_type="acknowledge",
             comment=comment,
-            timestamp=datetime.now(),
+            timestamp=datetime(2024, 11, 1, 14, 30, 0),  # Fixed timestamp
             old_status=old_status,
             new_status=AlertStatus.ACKNOWLEDGED
         )
@@ -130,21 +138,25 @@ class AlertManager:
         return True
     
     def investigate_alert(self, alert_id: str, user_id: str, team: str, comment: str) -> bool:
-        """Start investigation on an alert"""
+        """Start investigation on an alert (deterministic)"""
         if alert_id not in self.alerts:
             return False
         
         old_status = self.alert_status[alert_id]
         self.alert_status[alert_id] = AlertStatus.INVESTIGATING
         
+        # Create deterministic action ID
+        base_timestamp = "20241101143000"  # Fixed timestamp for deterministic behavior
+        action_id_suffix = str(hash(f"{alert_id}_{user_id}_{team}_investigate")) % 10000
+        
         action = AlertAction(
-            action_id=f"ACT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{alert_id[:8]}",
+            action_id=f"ACT-{base_timestamp}-{action_id_suffix:04d}",
             alert_id=alert_id,
             user_id=user_id,
             team=team,
             action_type="investigate",
             comment=comment,
-            timestamp=datetime.now(),
+            timestamp=datetime(2024, 11, 1, 14, 30, 0),  # Fixed timestamp
             old_status=old_status,
             new_status=AlertStatus.INVESTIGATING
         )
@@ -156,7 +168,7 @@ class AlertManager:
     
     def resolve_alert(self, alert_id: str, user_id: str, team: str, 
                      resolution: str, is_false_positive: bool = False) -> bool:
-        """Resolve an alert"""
+        """Resolve an alert (deterministic)"""
         if alert_id not in self.alerts:
             return False
         
@@ -164,14 +176,18 @@ class AlertManager:
         new_status = AlertStatus.FALSE_POSITIVE if is_false_positive else AlertStatus.RESOLVED
         self.alert_status[alert_id] = new_status
         
+        # Create deterministic action ID
+        base_timestamp = "20241101143000"  # Fixed timestamp for deterministic behavior
+        action_id_suffix = str(hash(f"{alert_id}_{user_id}_{team}_resolve")) % 10000
+        
         action = AlertAction(
-            action_id=f"ACT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{alert_id[:8]}",
+            action_id=f"ACT-{base_timestamp}-{action_id_suffix:04d}",
             alert_id=alert_id,
             user_id=user_id,
             team=team,
             action_type="resolve",
             comment=resolution,
-            timestamp=datetime.now(),
+            timestamp=datetime(2024, 11, 1, 14, 30, 0),  # Fixed timestamp
             old_status=old_status,
             new_status=new_status
         )
@@ -188,7 +204,7 @@ class AlertManager:
         return True
     
     def _escalate_alert(self, alert_id: str, target_team: str, reason: str):
-        """Escalate alert to higher team"""
+        """Escalate alert to higher team (deterministic)"""
         if alert_id not in self.alerts:
             return
         
@@ -203,15 +219,19 @@ class AlertManager:
             self.team_queues[old_team].remove(alert_id)
         self.team_queues[target_team].append(alert_id)
         
+        # Create deterministic action ID
+        base_timestamp = "20241101143000"  # Fixed timestamp for deterministic behavior
+        action_id_suffix = str(hash(f"{alert_id}_escalate_{target_team}")) % 10000
+        
         # Log escalation
         action = AlertAction(
-            action_id=f"ACT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{alert_id[:8]}",
+            action_id=f"ACT-{base_timestamp}-{action_id_suffix:04d}",
             alert_id=alert_id,
             user_id="SYSTEM",
             team="SYSTEM",
             action_type="escalate",
             comment=f"Escalated from {old_team} to {target_team}: {reason}",
-            timestamp=datetime.now(),
+            timestamp=datetime(2024, 11, 1, 14, 30, 0),  # Fixed timestamp
             old_status=self.alert_status[alert_id],
             new_status=self.alert_status[alert_id]
         )

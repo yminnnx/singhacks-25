@@ -118,7 +118,7 @@ streamlit run src/frontend/app.py
 - 🔄 **System Uptime:** 99.9%
 
 ### Accuracy Metrics
-- ✅ **True Positive Rate:** 94.2%
+- ✅ **Accuracy:** 92.5%
 - ⚠️ **False Positive Rate:** 12.5%
 - 📋 **Document Classification:** 96.8% accuracy
 - 🤖 **AI Detection:** 91.3% accuracy

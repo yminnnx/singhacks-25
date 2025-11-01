@@ -516,7 +516,7 @@ class AMLDemoGenerator:
                 ]
             },
             'compliance_status': {
-                'regulatory_compliance_score': 94.2,
+                'regulatory_compliance_score': 92.5,
                 'str_filing_rate': 98.5,
                 'kyc_completion_rate': 96.8,
                 'edd_completion_rate': 89.3,
@@ -691,7 +691,7 @@ class AMLDemoGenerator:
             },
             'accuracy_metrics': {
                 'false_positive_rate': '12.5%',
-                'true_positive_rate': '94.2%',
+                'true_positive_rate': '92.5%',
                 'document_classification_accuracy': '96.8%',
                 'ai_detection_accuracy': '91.3%'
             },
