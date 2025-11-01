@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 import io
 import sys
 import os
+import shap
 
 # Add parent directories to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'part1_aml_monitoring'))
@@ -167,6 +168,7 @@ class AMLDashboard:
             page = st.radio("Select Module", [
                 "Dashboard Overview",
                 "Transaction Monitoring",
+                "Case Management — Scoring",
                 "Document Corroboration",
                 "Image Analysis",
                 "Reports & Analytics"
@@ -177,6 +179,8 @@ class AMLDashboard:
             self.show_dashboard_overview()
         elif page == "Transaction Monitoring":
             self.show_transaction_monitoring()
+        elif page == "Case Management — Scoring":
+            self.show_case_management()
         elif page == "Document Corroboration":
             self.show_document_corroboration()
         elif page == "Image Analysis":
@@ -470,7 +474,7 @@ class AMLDashboard:
     
     def show_transaction_monitoring(self):
         """Show transaction monitoring interface"""
-        st.header("🔍 Transaction Monitoring")
+        st.header(" Transaction Monitoring")
         
         # Analysis mode selector
         col1, col2 = st.columns([2, 1])
@@ -500,13 +504,13 @@ class AMLDashboard:
                 data_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'transactions_mock_1000_for_participants.csv')
                 if os.path.exists(data_path):
                     df = pd.read_csv(data_path)
-                    st.success(f"📊 Loaded demo data: {len(df)} transactions")
+                    st.success(f"Loaded demo data: {len(df)} transactions")
                 else:
                     st.error("Demo data file not found")
                     return
             else:
                 df = pd.read_csv(uploaded_file)
-                st.success(f"📊 Loaded {len(df)} transactions")
+                st.success(f"Loaded {len(df)} transactions")
             
             # Transaction analysis controls
             col1, col2, col3, col4 = st.columns(4)
@@ -530,8 +534,8 @@ class AMLDashboard:
             # Filter data
             filtered_df = df[df['booking_jurisdiction'].isin(jurisdiction_filter)].head(analysis_sample)
             
-            if st.button("🚀 Analyze Transactions", type="primary"):
-                with st.spinner("🤖 Running ML-powered AML analysis..."):
+            if st.button("Analyze Transactions", type="primary"):
+                with st.spinner(" Running ML-powered AML analysis..."):
                     # Run ML-powered analysis
                     alerts = self.simulate_transaction_analysis(filtered_df, risk_threshold)
                     st.session_state.current_alerts = alerts
@@ -735,6 +739,66 @@ class AMLDashboard:
             return "Cash Transaction"
         else:
             return "Risk Pattern"
+        
+    def show_case_management(self):
+        st.header("CASE MANAGEMENT — Scoring")
+
+        uploaded_file = st.file_uploader("Choose file", type=['csv'])
+        if not uploaded_file:
+            st.info("Upload a case scoring CSV to begin.")
+            return
+
+        df = pd.read_csv(uploaded_file)
+        if "score" not in df.columns:
+            st.warning("No 'score' column found — computing risk scores using ML model...")
+
+            if ml_predictor and ml_predictor.is_loaded:
+                try:
+                    df["score"] = df.apply(
+                    lambda x: ml_predictor.predict_transaction_risk(x.to_dict())["risk_score"], axis=1
+                    )
+                    st.success("✅ Computed risk scores using ML model")
+                except Exception as e:
+                    st.error(f"Failed to compute scores: {e}")
+                    st.stop()
+            else:
+                # fallback to deterministic calculation
+                df["score"] = df["amount"].apply(lambda x: min(1.0, x / 1_000_000))
+                st.warning("⚠️ ML model not active — using fallback amount-based risk score")
+
+        st.success(f"Loaded {len(df)} cases")
+        threshold = df["score"].mean()
+        st.caption(f"Threshold {threshold:.6f}  •  Total {len(df)}")
+
+        # Render table
+        for i, row in df.iterrows():
+            col1, col2, col3, col4, col5 = st.columns([1,1,1,2,1])
+            label = "TRUE_HIT" if row["score"] >= threshold else "FALSE_HIT"
+            color = "red" if label == "TRUE_HIT" else "green"
+            col1.write(f"**{i+1}**")
+            col2.write(f"{row['score']:.4f}")
+            col3.markdown(f"<span style='color:{color}'>{label}</span>", unsafe_allow_html=True)
+            col4.write("Click Explain")
+            if col5.button("Explain", key=f"exp{i}"):
+                self.show_shap_explanation(row)
+    
+    def show_shap_explanation(self, row):
+        st.subheader(f"Explanation for Case {row.get('transaction_id', row.name)}")
+
+        # Prepare input features same way as model expects
+        transaction_data = {k: row[k] for k in row.index if k not in ['label', 'score']}
+        top_features, shap_values = ml_predictor.explain_instance(transaction_data)
+
+        # Display top factors
+        st.markdown("###  Top Feature Contributors")
+        for feature, val in top_features:
+            impact = " Increased risk" if val > 0 else "Decreased risk"
+            st.write(f"• **{feature}** ({impact}, {val:+.3f})")
+
+        # Optional visual summary
+        shap.plots.waterfall(shap_values[0], show=False)
+        st.pyplot(bbox_inches='tight')
+
     
     def display_transaction_alerts(self, alerts):
         """Display transaction alerts with ML model information"""

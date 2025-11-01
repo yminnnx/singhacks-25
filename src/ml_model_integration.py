@@ -162,6 +162,16 @@ class AMLModelPredictor:
             'prediction_type': 'RULE_BASED'
         }
     
+    def explain_instance(self, transaction_data: dict):
+        """Return SHAP feature explanations for one transaction"""
+        X = pd.DataFrame([transaction_data])
+        explainer = shap.Explainer(self.model)
+        shap_values = explainer(X)
+        # Sort features by absolute impact
+        top_idx = np.argsort(np.abs(shap_values.values[0]))[::-1][:5]
+        top_features = [(X.columns[i], float(shap_values.values[0][i])) for i in top_idx]
+        return top_features, shap_values
+    
     def batch_predict(self, transactions: pd.DataFrame) -> pd.DataFrame:
         """Predict risk for a batch of transactions"""
         results = []
