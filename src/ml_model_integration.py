@@ -55,13 +55,18 @@ class AMLModelPredictor:
             feature_columns = self.model_data['feature_columns']
             label_encoders = self.model_data['label_encoders']
             
+            # Get optimal threshold if available (default to 0.5)
+            optimal_threshold = self.model_data.get('optimal_threshold', 0.5)
+            
             # Create feature vector
             features = self._prepare_features(transaction, feature_columns, label_encoders)
             
             # Make prediction
             features_array = np.array(features).reshape(1, -1)
             risk_probability = model.predict_proba(features_array)[0][1]
-            risk_prediction = model.predict(features_array)[0]
+            
+            # Use optimal threshold for classification
+            risk_prediction = 1 if risk_probability >= optimal_threshold else 0
             
             # Convert to risk score (0-100)
             risk_score = risk_probability * 100
@@ -72,7 +77,8 @@ class AMLModelPredictor:
                 'is_high_risk': bool(risk_prediction),
                 'confidence': float(max(model.predict_proba(features_array)[0])),
                 'model_used': self.model_data['model_name'],
-                'prediction_type': 'ML_MODEL'
+                'prediction_type': 'ML_MODEL',
+                'threshold_used': float(optimal_threshold)
             }
             
         except Exception as e:
