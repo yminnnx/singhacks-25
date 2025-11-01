@@ -24,6 +24,14 @@ import io
 import sys
 import os
 
+# Page configuration
+st.set_page_config(
+    page_title="Julius Baer AML Monitoring System",
+    page_icon="🏦",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 # Add parent directories to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'part1_aml_monitoring'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'part2_document_corroboration'))
