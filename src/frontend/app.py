@@ -788,36 +788,128 @@ class AMLDashboard:
             return "Risk Pattern"
         
     def show_case_management(self):
-        st.header("CASE MANAGEMENT — Scoring")
+        st.header("📊 Case Management — Risk Scoring")
+        
+        st.markdown("""
+        **AI-Powered Case Risk Assessment**
+        
+        Upload your case data CSV file to get ML-powered risk scores for each case.
+        The system will automatically compute risk scores if they're not present.
+        """)
 
-        uploaded_file = st.file_uploader("Choose file", type=['csv'])
+        uploaded_file = st.file_uploader("Choose CSV file", type=['csv'])
         if not uploaded_file:
-            st.info("Upload a case scoring CSV to begin.")
+            st.info("📁 Upload a case scoring CSV file to begin analysis.")
+            
+            # Show sample data format
+            with st.expander("📋 Expected CSV Format"):
+                sample_data = {
+                    'case_id': ['CASE_001', 'CASE_002', 'CASE_003'],
+                    'amount': [100000, 500000, 250000],
+                    'customer_risk_rating': ['Medium', 'High', 'Low'],
+                    'customer_is_pep': [False, True, False],
+                    'sanctions_screening': ['clear', 'potential', 'clear'],
+                    'channel': ['Online', 'Cash', 'Wire'],
+                    'currency': ['USD', 'EUR', 'CHF']
+                }
+                sample_df = pd.DataFrame(sample_data)
+                st.dataframe(sample_df, use_container_width=True)
+                st.caption("💡 The system will compute 'score' column automatically if not present")
             return
 
-        df = pd.read_csv(uploaded_file)
+        try:
+            df = pd.read_csv(uploaded_file)
+            st.success(f"✅ Loaded {len(df)} cases from {uploaded_file.name}")
+            
+            # Show column info
+            st.write("**📊 Dataset Info:**")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Cases", len(df))
+            with col2:
+                st.metric("Columns", len(df.columns))
+            with col3:
+                st.metric("Data Size", f"{df.memory_usage().sum() / 1024:.1f} KB")
+            
+        except Exception as e:
+            st.error(f"❌ Error reading CSV file: {e}")
+            return
+
+        # Check if score column exists, if not compute it
         if "score" not in df.columns:
-            st.warning("No 'score' column found — computing risk scores using ML model...")
+            st.warning("⚠️ No 'score' column found — computing risk scores using ML model...")
 
             if ml_predictor and ml_predictor.is_loaded:
                 try:
-                    df["score"] = df.apply(
-                    lambda x: ml_predictor.predict_transaction_risk(x.to_dict())["risk_score"], axis=1
-                    )
-                    st.success("✅ Computed risk scores using ML model")
+                    with st.spinner("🤖 Computing ML risk scores..."):
+                        # Safely compute scores with error handling for each row
+                        scores = []
+                        for idx, row in df.iterrows():
+                            try:
+                                result = ml_predictor.predict_transaction_risk(row.to_dict())
+                                scores.append(result["risk_score"])
+                            except Exception as e:
+                                st.warning(f"Failed to score row {idx}: {e}")
+                                scores.append(50.0)  # Default moderate risk
+                        
+                        df["score"] = scores
+                    st.success("✅ Computed risk scores using XGBoost ML model")
                 except Exception as e:
-                    st.error(f"Failed to compute scores: {e}")
-                    st.stop()
+                    st.error(f"❌ Failed to compute ML scores: {e}")
+                    # Fallback to simple scoring
+                    if 'amount' in df.columns:
+                        df["score"] = df["amount"].apply(lambda x: min(100.0, x / 10000))
+                        st.warning("⚠️ Using fallback amount-based scoring")
+                    else:
+                        df["score"] = [50.0] * len(df)  # Default scores
+                        st.warning("⚠️ Using default risk scores")
             else:
                 # fallback to deterministic calculation
-                df["score"] = df["amount"].apply(lambda x: min(1.0, x / 1_000_000))
-                st.warning("⚠️ ML model not active — using fallback amount-based risk score")
+                if 'amount' in df.columns:
+                    df["score"] = df["amount"].apply(lambda x: min(100.0, x / 10000))
+                    st.warning("⚠️ ML model not active — using amount-based risk score")
+                else:
+                    df["score"] = [50.0] * len(df)  # Default moderate risk
+                    st.warning("⚠️ No amount column found — using default risk scores")
 
-        st.success(f"Loaded {len(df)} cases")
-        threshold = df["score"].mean()
-        st.caption(f"Threshold {threshold:.6f}  •  Total {len(df)}")
+        # Calculate statistics
+        avg_score = df["score"].mean()
+        threshold = st.slider("Risk Threshold", 0.0, 100.0, avg_score, 0.1)
+        
+        st.write(f"**📈 Risk Analysis Summary:**")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Average Score", f"{avg_score:.2f}")
+        with col2:
+            high_risk_count = len(df[df["score"] > threshold])
+            st.metric("High Risk Cases", high_risk_count)
+        with col3:
+            st.metric("Low Risk Cases", len(df) - high_risk_count)
+        with col4:
+            st.metric("Risk Threshold", f"{threshold:.2f}")
 
-        # Render table
+        # Show risk distribution
+        import plotly.express as px
+        fig = px.histogram(df, x="score", nbins=20, title="Risk Score Distribution")
+        fig.add_vline(x=threshold, line_dash="dash", line_color="red", 
+                     annotation_text=f"Threshold: {threshold:.2f}")
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Render table with risk color coding
+        st.subheader("📋 Case Risk Assessment Results")
+        
+        # Add risk level column
+        df["risk_level"] = df["score"].apply(
+            lambda x: "🔴 High" if x > threshold else "🟡 Medium" if x > threshold * 0.6 else "🟢 Low"
+        )
+        
+        # Display table
+        display_columns = ["risk_level", "score"] + [col for col in df.columns if col not in ["risk_level", "score"]]
+        st.dataframe(
+            df[display_columns].style.format({"score": "{:.2f}"}),
+            use_container_width=True
+        )
         for i, row in df.iterrows():
             col1, col2, col3, col4, col5 = st.columns([1,1,1,2,1])
             label = "TRUE_HIT" if row["score"] >= threshold else "FALSE_HIT"
@@ -830,21 +922,39 @@ class AMLDashboard:
                 self.show_shap_explanation(row)
     
     def show_shap_explanation(self, row):
-        st.subheader(f"Explanation for Case {row.get('transaction_id', row.name)}")
+        st.subheader(f"🔍 AI Explanation for Case {row.get('transaction_id', row.name)}")
 
-        # Prepare input features same way as model expects
-        transaction_data = {k: row[k] for k in row.index if k not in ['label', 'score']}
-        top_features, shap_values = ml_predictor.explain_instance(transaction_data)
+        if not ml_predictor or not ml_predictor.is_loaded:
+            st.warning("⚠️ ML model not available for explanations")
+            return
 
-        # Display top factors
-        st.markdown("###  Top Feature Contributors")
-        for feature, val in top_features:
-            impact = " Increased risk" if val > 0 else "Decreased risk"
-            st.write(f"• **{feature}** ({impact}, {val:+.3f})")
+        try:
+            # Prepare input features same way as model expects
+            transaction_data = {k: row[k] for k in row.index if k not in ['label', 'score']}
+            top_features, shap_values = ml_predictor.explain_instance(transaction_data)
 
-        # Optional visual summary
-        shap.plots.waterfall(shap_values[0], show=False)
-        st.pyplot(bbox_inches='tight')
+            # Display top factors
+            st.markdown("### 🎯 Top Feature Contributors")
+            for feature, val in top_features:
+                impact = "🔺 Increased risk" if val > 0 else "🔻 Decreased risk"
+                color = "red" if val > 0 else "green"
+                st.markdown(f"• **{feature}**: {impact} ({val:+.3f})", unsafe_allow_html=True)
+
+            # Optional visual summary (only if shap is available)
+            if shap is not None and shap_values is not None:
+                try:
+                    import matplotlib.pyplot as plt
+                    plt.figure(figsize=(10, 6))
+                    shap.plots.waterfall(shap_values[0], show=False)
+                    st.pyplot(plt.gcf(), bbox_inches='tight')
+                    plt.close()
+                except Exception as e:
+                    st.info(f"Visual SHAP plot not available: {e}")
+            else:
+                st.info("📊 Visual explanations require SHAP library")
+                
+        except Exception as e:
+            st.error(f"❌ Failed to generate explanation: {e}")
 
     
     def display_transaction_alerts(self, alerts):
