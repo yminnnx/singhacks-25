@@ -101,7 +101,7 @@ class AMLDashboard:
     
     def run(self):
         """Main dashboard function"""
-        st.title("🏦 Julius Baer AML Monitoring System")
+        st.title("Julius Baer AML Monitoring System")
         st.markdown("**Real-time Anti-Money Laundering monitoring and document corroboration platform**")
         
         # Load engines
@@ -112,29 +112,29 @@ class AMLDashboard:
         with st.sidebar:
             st.markdown("### Navigation")
             page = st.radio("Select Module", [
-                "📊 Dashboard Overview",
-                "💰 Transaction Monitoring",
-                "🚨 Alert Management", 
-                "📋 Rules Engine",
-                "📄 Document Corroboration",
-                "🖼️ Image Analysis",
-                "📈 Reports & Analytics"
+                "Dashboard Overview",
+                "Transaction Monitoring",
+                "Alert Management", 
+                "Rules Engine",
+                "Document Corroboration",
+                "Image Analysis",
+                "Reports & Analytics"
             ])
         
         # Route to appropriate page
-        if page == "📊 Dashboard Overview":
+        if page == "Dashboard Overview":
             self.show_dashboard_overview()
-        elif page == "💰 Transaction Monitoring":
+        elif page == "Transaction Monitoring":
             self.show_transaction_monitoring()
-        elif page == "🚨 Alert Management":
+        elif page == "Alert Management":
             self.show_alert_management()
-        elif page == "📋 Rules Engine":
+        elif page == "Rules Engine":
             self.show_rules_engine()
-        elif page == "📄 Document Corroboration":
+        elif page == "Document Corroboration":
             self.show_document_corroboration()
-        elif page == "🖼️ Image Analysis":
+        elif page == "Image Analysis":
             self.show_image_analysis()
-        elif page == "📈 Reports & Analytics":
+        elif page == "Reports & Analytics":
             self.show_reports_analytics()
     
     def show_dashboard_overview(self):
@@ -143,35 +143,35 @@ class AMLDashboard:
         
         # Demo mode notice
         if st.session_state.demo_mode:
-            st.info("🔧 **Demo Mode**: This dashboard demonstrates the AML monitoring system capabilities using sample data.")
+            st.info("Demo Mode: This dashboard demonstrates the AML monitoring system capabilities using sample data.")
         
         # Key metrics
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             st.metric(
-                label="📊 Total Transactions",
+                label="Total Transactions",
                 value="1,000",
                 delta="24h period"
             )
         
         with col2:
             st.metric(
-                label="🚨 Active Alerts",
+                label="Active Alerts",
                 value="47",
                 delta="12 new"
             )
         
         with col3:
             st.metric(
-                label="📄 Documents Processed",
+                label="Documents Processed",
                 value="156",
                 delta="+23 today"
             )
         
         with col4:
             st.metric(
-                label="⚠️ High Risk Items",
+                label="High Risk Items",
                 value="8",
                 delta="3 critical"
             )
@@ -263,7 +263,7 @@ class AMLDashboard:
     
     def show_transaction_monitoring(self):
         """Show transaction monitoring interface"""
-        st.header("💰 Transaction Monitoring")
+        st.header("Transaction Monitoring")
         
         # File upload for transaction data
         uploaded_file = st.file_uploader(
@@ -278,13 +278,13 @@ class AMLDashboard:
                 data_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'transactions_mock_1000_for_participants.csv')
                 if os.path.exists(data_path):
                     df = pd.read_csv(data_path)
-                    st.success(f"✅ Loaded demo data: {len(df)} transactions")
+                    st.success(f"Loaded demo data: {len(df)} transactions")
                 else:
                     st.error("Demo data file not found")
                     return
             else:
                 df = pd.read_csv(uploaded_file)
-                st.success(f"✅ Loaded {len(df)} transactions")
+                st.success(f"Loaded {len(df)} transactions")
             
             # Transaction analysis controls
             col1, col2, col3 = st.columns(3)
@@ -305,7 +305,7 @@ class AMLDashboard:
             # Filter data
             filtered_df = df[df['booking_jurisdiction'].isin(jurisdiction_filter)]
             
-            if st.button("🔍 Analyze Transactions"):
+            if st.button("Analyze Transactions"):
                 with st.spinner("Analyzing transactions..."):
                     # Simulate analysis
                     alerts = self.simulate_transaction_analysis(filtered_df, risk_threshold)
@@ -397,7 +397,7 @@ class AMLDashboard:
     
     def display_transaction_alerts(self, alerts):
         """Display transaction alerts"""
-        st.subheader("🚨 Generated Alerts")
+        st.subheader("Generated Alerts")
         
         alert_df = pd.DataFrame(alerts)
         
@@ -427,7 +427,7 @@ class AMLDashboard:
     
     def show_alert_management(self):
         """Show alert management interface"""
-        st.header("🚨 Alert Management")
+        st.header("Alert Management")
         
         # Team selection
         selected_team = st.selectbox("Select Team", ["Front", "Compliance", "Legal"])
@@ -508,7 +508,7 @@ class AMLDashboard:
         with st.container():
             st.markdown(f"""
             <div class="metric-card {card_class}">
-                <h4>🚨 {alert['type']} - {alert['id']}</h4>
+                <h4>Alert: {alert['type']} - {alert['id']}</h4>
                 <p><strong>Risk Score:</strong> {alert['risk_score']}/100</p>
                 <p><strong>Amount:</strong> {alert['amount']:,.2f} {alert['currency']}</p>
                 <p><strong>Customer:</strong> {alert['customer']}</p>
@@ -522,26 +522,26 @@ class AMLDashboard:
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                if st.button("✅ Acknowledge", key=f"ack_{alert['id']}"):
+                if st.button("Acknowledge", key=f"ack_{alert['id']}"):
                     st.success("Alert acknowledged")
             
             with col2:
-                if st.button("🔍 Investigate", key=f"inv_{alert['id']}"):
+                if st.button("Investigate", key=f"inv_{alert['id']}"):
                     st.info("Investigation started")
             
             with col3:
-                if st.button("✅ Resolve", key=f"res_{alert['id']}"):
+                if st.button("Resolve", key=f"res_{alert['id']}"):
                     st.success("Alert resolved")
             
             with col4:
-                if st.button("⬆️ Escalate", key=f"esc_{alert['id']}"):
+                if st.button("Escalate", key=f"esc_{alert['id']}"):
                     st.warning("Alert escalated")
             
             st.markdown("---")
     
     def show_rules_engine(self):
         """Show rules engine configuration"""
-        st.header("📋 Regulatory Rules Engine")
+        st.header("Regulatory Rules Engine")
         
         # Rules overview
         col1, col2 = st.columns([2, 1])
@@ -597,7 +597,7 @@ class AMLDashboard:
     
     def show_document_corroboration(self):
         """Show document corroboration interface"""
-        st.header("📄 Document Corroboration")
+        st.header("Document Corroboration")
         
         # File upload
         uploaded_file = st.file_uploader(
@@ -612,7 +612,7 @@ class AMLDashboard:
             st.write(f"**Size:** {uploaded_file.size} bytes")
             st.write(f"**Type:** {uploaded_file.type}")
             
-            if st.button("🔍 Analyze Document"):
+            if st.button("Analyze Document"):
                 with st.spinner("Analyzing document..."):
                     # Simulate document analysis
                     analysis_result = self.simulate_document_analysis(uploaded_file)
@@ -698,24 +698,24 @@ class AMLDashboard:
         
         # Risk score with color coding
         if analysis['risk_score'] >= 80:
-            st.error(f"🔴 **High Risk** - Score: {analysis['risk_score']}/100")
+            st.error(f"High Risk - Score: {analysis['risk_score']}/100")
         elif analysis['risk_score'] >= 50:
-            st.warning(f"🟡 **Medium Risk** - Score: {analysis['risk_score']}/100")
+            st.warning(f"Medium Risk - Score: {analysis['risk_score']}/100")
         else:
-            st.success(f"🟢 **Low Risk** - Score: {analysis['risk_score']}/100")
+            st.success(f"Low Risk - Score: {analysis['risk_score']}/100")
         
         # Issues found
         if analysis['issues']:
             st.subheader("Issues Detected")
             for issue in analysis['issues']:
-                st.write(f"⚠️ {issue}")
+                st.write(f"Warning: {issue}")
         else:
-            st.success("✅ No significant issues detected")
+            st.success("No significant issues detected")
         
         # Recommendations
         st.subheader("Recommendations")
         for rec in analysis['recommendations']:
-            st.write(f"📋 {rec}")
+            st.write(f"Note: {rec}")
         
         # Metadata
         with st.expander("Document Metadata"):
@@ -723,7 +723,7 @@ class AMLDashboard:
     
     def show_image_analysis(self):
         """Show image analysis interface"""
-        st.header("🖼️ Image Analysis")
+        st.header("Image Analysis")
         
         st.write("**Advanced image authenticity verification**")
         st.write("This module detects AI-generated images, tampering, and other authenticity issues.")
@@ -750,7 +750,7 @@ class AMLDashboard:
                 check_tampering = st.checkbox("Tampering Detection", value=True)
                 check_pixel_analysis = st.checkbox("Pixel Pattern Analysis", value=True)
             
-            if st.button("🔍 Analyze Image"):
+            if st.button("Analyze Image"):
                 with st.spinner("Analyzing image authenticity..."):
                     # Simulate image analysis
                     image_results = self.simulate_image_analysis(uploaded_image)
@@ -826,18 +826,18 @@ class AMLDashboard:
     
     def display_image_analysis_results(self, results):
         """Display image analysis results"""
-        st.subheader("🔍 Analysis Results")
+        st.subheader("Analysis Results")
         
         # Overall score
         score = results['authenticity_score']
         if score >= 80:
-            st.success(f"✅ **AUTHENTIC** - Confidence: {score}%")
+            st.success(f"AUTHENTIC - Confidence: {score}%")
         elif score >= 60:
-            st.warning(f"⚠️ **SUSPICIOUS** - Confidence: {score}%")
+            st.warning(f"SUSPICIOUS - Confidence: {score}%")
         elif score >= 40:
-            st.error(f"❌ **LIKELY FAKE** - Confidence: {score}%")
+            st.error(f"LIKELY FAKE - Confidence: {score}%")
         else:
-            st.error(f"🚫 **FAKE** - Confidence: {score}%")
+            st.error(f"FAKE - Confidence: {score}%")
         
         st.write(f"**Assessment:** {results['overall_assessment']}")
         
@@ -873,11 +873,11 @@ class AMLDashboard:
         # Recommendations
         st.subheader("Recommendations")
         for rec in results['recommendations']:
-            st.write(f"📋 {rec}")
+            st.write(f"Note: {rec}")
     
     def show_reports_analytics(self):
         """Show reports and analytics"""
-        st.header("📈 Reports & Analytics")
+        st.header("Reports & Analytics")
         
         # Time period selection
         col1, col2 = st.columns(2)
@@ -894,13 +894,13 @@ class AMLDashboard:
             ["Transaction Risk Analysis", "Alert Management Summary", "Document Processing Report", "Compliance Overview"]
         )
         
-        if st.button("📊 Generate Report"):
+        if st.button("Generate Report"):
             with st.spinner("Generating report..."):
                 self.generate_report(report_type, start_date, end_date)
     
     def generate_report(self, report_type, start_date, end_date):
         """Generate various types of reports"""
-        st.subheader(f"📋 {report_type}")
+        st.subheader(f"{report_type}")
         st.write(f"**Period:** {start_date} to {end_date}")
         
         if report_type == "Transaction Risk Analysis":
@@ -917,15 +917,15 @@ class AMLDashboard:
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            if st.button("📄 Export PDF"):
+            if st.button("Export PDF"):
                 st.success("PDF report generated!")
         
         with col2:
-            if st.button("📊 Export Excel"):
+            if st.button("Export Excel"):
                 st.success("Excel report generated!")
         
         with col3:
-            if st.button("📧 Email Report"):
+            if st.button("Email Report"):
                 st.success("Report emailed to stakeholders!")
     
     def show_transaction_risk_report(self):
