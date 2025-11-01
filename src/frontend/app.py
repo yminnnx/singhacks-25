@@ -1140,10 +1140,21 @@ class AMLDashboard:
     
     def show_image_analysis(self):
         """Show image analysis interface"""
-        st.header("Image Analysis")
+        st.header("🤖 AI-Powered Image Analysis")
         
-        st.write("**Advanced image authenticity verification**")
-        st.write("This module detects AI-generated images, tampering, and other authenticity issues.")
+        st.write("**Advanced image authenticity verification with Groq Vision AI**")
+        st.write("This module uses Groq's Llama 4 Scout vision model to detect AI-generated images, tampering, and other authenticity issues for AML compliance.")
+        
+        # Add a status indicator for Groq integration
+        try:
+            from src.config.env_config import Config
+            config = Config()
+            if config.GROQ_API_KEY:
+                st.success("🚀 Groq Vision AI is active and ready for analysis")
+            else:
+                st.warning("⚠️ Groq Vision AI not configured - using fallback analysis")
+        except:
+            st.warning("⚠️ Groq Vision AI not available - using fallback analysis")
         
         # Image upload
         uploaded_image = st.file_uploader(
@@ -1168,22 +1179,50 @@ class AMLDashboard:
                 check_pixel_analysis = st.checkbox("Pixel Pattern Analysis", value=True)
             
             if st.button("Analyze Image"):
-                with st.spinner("Analyzing image authenticity..."):
-                    # Simulate image analysis
-                    image_results = self.simulate_image_analysis(uploaded_image)
-                
-                self.display_image_analysis_results(image_results)
+                with st.spinner("Analyzing image authenticity with Groq Vision AI..."):
+                    # Save uploaded image to temp file for analysis
+                    import tempfile
+                    import os
+                    from src.part2_document_corroboration.image_analysis import ImageAnalysisEngine
+                    
+                    try:
+                        # Create temporary file
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp_file:
+                            tmp_file.write(uploaded_image.getvalue())
+                            tmp_path = tmp_file.name
+                        
+                        # Initialize the real image analysis engine
+                        engine = ImageAnalysisEngine()
+                        
+                        # Run comprehensive analysis with Groq Vision
+                        analysis_result = engine.analyze_image(tmp_path)
+                        
+                        # Display results
+                        self.display_groq_vision_results(analysis_result)
+                        
+                        # Clean up temp file
+                        os.unlink(tmp_path)
+                        
+                    except Exception as e:
+                        st.error(f"Analysis failed: {e}")
+                        # Fallback to demo analysis
+                        image_results = self.simulate_image_analysis(uploaded_image)
+                        self.display_image_analysis_results(image_results)
         
         # Analysis types explanation
-        with st.expander("Analysis Types Explained"):
+        with st.expander("🔬 AI Analysis Technologies"):
             st.write("""
-            **Metadata Analysis**: Examines EXIF data for signs of editing or AI generation
+            **🤖 Groq Vision AI (Llama 4 Scout)**: Advanced AI model that directly analyzes image content for AI generation detection, unnatural patterns, and document authenticity assessment
             
-            **AI Generation Detection**: Identifies images created by AI tools like DALL-E, Midjourney
+            **📊 Metadata Analysis**: Examines EXIF data for signs of editing, device information, and timestamp inconsistencies
             
-            **Tampering Detection**: Detects copy-paste, splicing, and other manipulations
+            **🎯 AI Generation Detection**: Identifies images created by AI tools like DALL-E, Midjourney, Stable Diffusion using visual pattern recognition
             
-            **Pixel Pattern Analysis**: Analyzes noise patterns and compression artifacts
+            **🔍 Tampering Detection**: Detects copy-paste, splicing, noise inconsistencies, and other digital manipulations
+            
+            **📈 Pixel Pattern Analysis**: Analyzes noise patterns, edge consistency, compression artifacts, and color distribution anomalies
+            
+            **⚖️ Compliance Integration**: Results formatted for AML compliance workflows with specific recommendations for financial document verification
             """)
     
     def simulate_image_analysis(self, uploaded_image):
@@ -1254,6 +1293,132 @@ class AMLDashboard:
             return ["Enhanced verification required", "Consider rejection"]
         else:
             return ["REJECT image", "Flag as potential fraud", "Investigate customer"]
+    
+    def display_groq_vision_results(self, analysis_result):
+        """Display Groq Vision AI analysis results"""
+        st.subheader("🤖 Groq Vision AI Analysis Results")
+        
+        # Overall assessment
+        groq_result = analysis_result.groq_ai_analysis
+        
+        # Overall confidence and result
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if groq_result.result.value in ['AUTHENTIC', 'LIKELY_AUTHENTIC']:
+                st.success(f"**Result:** {groq_result.result.value}")
+            elif groq_result.result.value in ['SUSPICIOUS']:
+                st.warning(f"**Result:** {groq_result.result.value}")
+            else:  # AI_GENERATED, LIKELY_FAKE, etc.
+                st.error(f"**Result:** {groq_result.result.value}")
+        
+        with col2:
+            st.metric("AI Confidence", f"{groq_result.confidence:.1f}%")
+        
+        with col3:
+            # Risk level from Groq analysis
+            risk_level = groq_result.evidence.get('risk_level', 'UNKNOWN')
+            if risk_level == 'LOW':
+                st.success(f"Risk: {risk_level}")
+            elif risk_level == 'MEDIUM':
+                st.warning(f"Risk: {risk_level}")
+            else:
+                st.error(f"Risk: {risk_level}")
+        
+        # Groq Vision Analysis Details
+        st.write("---")
+        st.subheader("🔍 Detailed Analysis")
+        
+        # AI Generation Verdict
+        if 'ai_generation_verdict' in groq_result.evidence:
+            verdict = groq_result.evidence['ai_generation_verdict']
+            st.write(f"**AI Generation Verdict:** {verdict}")
+        
+        # Document Assessment
+        if 'document_type_assessment' in groq_result.evidence:
+            assessment = groq_result.evidence['document_type_assessment']
+            st.write(f"**Document Type:** {assessment}")
+        
+        # Primary AI Indicators
+        if 'primary_ai_indicators' in groq_result.evidence:
+            indicators = groq_result.evidence['primary_ai_indicators']
+            if indicators:
+                st.write("**🎯 AI Generation Indicators:**")
+                for indicator in indicators:
+                    st.write(f"• {indicator}")
+        
+        # Technical Analysis
+        if 'technical_analysis' in groq_result.evidence:
+            tech_data = groq_result.evidence['technical_analysis']
+            st.write("**🔬 Technical Measurements:**")
+            
+            tech_col1, tech_col2 = st.columns(2)
+            with tech_col1:
+                if 'noise_variance' in tech_data:
+                    st.metric("Noise Variance", f"{tech_data['noise_variance']:.1f}")
+                if 'compression_artifacts' in tech_data:
+                    st.metric("Compression Artifacts", "Yes" if tech_data['compression_artifacts'] else "No")
+            
+            with tech_col2:
+                if 'edge_consistency' in tech_data:
+                    st.metric("Edge Consistency", f"{tech_data['edge_consistency']:.3f}")
+                if 'color_anomaly' in tech_data:
+                    st.metric("Color Anomaly", f"{tech_data['color_anomaly']:.3f}")
+        
+        # Groq Vision Analysis Response
+        if 'groq_vision_analysis' in groq_result.evidence:
+            with st.expander("📋 Full Groq Vision Response"):
+                st.text(groq_result.evidence['groq_vision_analysis'])
+        
+        # Detailed Analysis
+        if 'detailed_analysis' in groq_result.evidence:
+            st.write("**📝 Professional Assessment:**")
+            st.write(groq_result.evidence['detailed_analysis'])
+        
+        # Compliance Action
+        st.write("---")
+        st.subheader("📋 Compliance Recommendations")
+        
+        if 'compliance_action' in groq_result.evidence:
+            st.info(f"**Recommended Action:** {groq_result.evidence['compliance_action']}")
+        
+        # Recommendations
+        if groq_result.recommendations:
+            st.write("**Additional Recommendations:**")
+            for i, rec in enumerate(groq_result.recommendations, 1):
+                st.write(f"{i}. {rec}")
+        
+        # Overall assessment with all analyses
+        st.write("---")
+        st.subheader("📊 Comprehensive Assessment")
+        
+        overall_col1, overall_col2 = st.columns(2)
+        
+        with overall_col1:
+            st.metric("Overall Confidence", f"{analysis_result.confidence_score:.1f}%")
+            st.write(f"**Final Assessment:** {analysis_result.overall_assessment.value}")
+        
+        with overall_col2:
+            if analysis_result.risk_indicators:
+                st.write("**⚠️ Risk Indicators:**")
+                for indicator in analysis_result.risk_indicators:
+                    st.write(f"• {indicator}")
+        
+        # Action buttons based on results
+        st.write("---")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("✅ Accept Document", type="primary" if groq_result.result.value in ['AUTHENTIC', 'LIKELY_AUTHENTIC'] else "secondary"):
+                st.success("Document marked as acceptable")
+        
+        with col2:
+            if st.button("⚠️ Flag for Review"):
+                st.warning("Document flagged for manual review")
+        
+        with col3:
+            if st.button("❌ Reject Document", type="primary" if groq_result.result.value in ['AI_GENERATED', 'LIKELY_FAKE'] else "secondary"):
+                st.error("Document rejected due to authenticity concerns")
     
     def display_image_analysis_results(self, results):
         """Display image analysis results"""

@@ -8,11 +8,18 @@ import hashlib
 import json
 import logging
 import requests
+import random
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 import base64
+
+# Add Groq integration
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.config.env_config import Config
+from groq import Groq
 
 try:
     import cv2
@@ -21,6 +28,23 @@ try:
     from PIL.ExifTags import TAGS
 except ImportError:
     print("Image analysis libraries not available. Install with: pip install opencv-python Pillow")
+    # Create dummy numpy for basic functionality
+    class DummyNumpy:
+        @staticmethod
+        def clip(value, min_val, max_val):
+            return max(min_val, min(max_val, value))
+        @staticmethod
+        def mean(arr):
+            return sum(arr) / len(arr) if arr else 0
+        @staticmethod
+        def var(arr):
+            if not arr: return 0
+            mean_val = sum(arr) / len(arr)
+            return sum((x - mean_val) ** 2 for x in arr) / len(arr)
+        @staticmethod
+        def std(arr):
+            return DummyNumpy.var(arr) ** 0.5
+    np = DummyNumpy()
 
 class AuthenticityResult(Enum):
     AUTHENTIC = "Authentic"
@@ -35,6 +59,7 @@ class AnalysisType(Enum):
     REVERSE_IMAGE_SEARCH = "Reverse Image Search"
     AI_DETECTION = "AI Detection"
     TAMPERING_DETECTION = "Tampering Detection"
+    GROQ_AI_ANALYSIS = "Groq AI Analysis"  # New analysis type
 
 @dataclass
 class ImageAnalysisResult:
@@ -56,6 +81,7 @@ class ComprehensiveImageAnalysis:
     pixel_analysis: ImageAnalysisResult
     ai_detection_analysis: ImageAnalysisResult
     tampering_analysis: ImageAnalysisResult
+    groq_ai_analysis: ImageAnalysisResult  # New Groq analysis
     reverse_search_analysis: Optional[ImageAnalysisResult]
     overall_assessment: AuthenticityResult
     confidence_score: float
@@ -69,6 +95,11 @@ class ImageAnalysisEngine:
     
     def __init__(self):
         self.setup_logging()
+        
+        # Initialize Groq client for AI analysis
+        self.groq_client = None
+        self.groq_enabled = False
+        self._initialize_groq()
         
         # Known AI generator signatures
         self.ai_generators = [
@@ -95,6 +126,26 @@ class ImageAnalysisEngine:
         )
         self.logger = logging.getLogger(__name__)
     
+    def _initialize_groq(self):
+        """Initialize Groq client for AI-powered image analysis"""
+        try:
+            Config.validate_config()
+            self.groq_client = Groq(api_key=Config.GROQ_API_KEY)
+            self.groq_enabled = True
+            self.logger.info("✅ Groq AI integration enabled for enhanced image analysis")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Groq AI not available: {e}")
+            self.groq_enabled = False
+    
+    def _encode_image_for_groq(self, image_path: str) -> str:
+        """Encode image to base64 for Groq analysis"""
+        try:
+            with open(image_path, "rb") as image_file:
+                return base64.b64encode(image_file.read()).decode('utf-8')
+        except Exception as e:
+            self.logger.error(f"Failed to encode image: {e}")
+            return None
+    
     def analyze_image(self, image_path: str) -> ComprehensiveImageAnalysis:
         """Perform comprehensive image analysis"""
         try:
@@ -115,17 +166,20 @@ class ImageAnalysisEngine:
             ai_detection = self._detect_ai_generation(image, pil_image)
             tampering_analysis = self._detect_tampering(image)
             
+            # NEW: Groq AI-powered analysis
+            groq_ai_analysis = self._analyze_with_groq(image_path, pil_image)
+            
             # Reverse image search (optional, requires API)
             reverse_search = None  # Would implement with Google Vision API or similar
             
-            # Calculate overall assessment
+            # Calculate overall assessment (now includes Groq analysis)
             overall_assessment, confidence_score = self._calculate_overall_assessment([
-                metadata_analysis, pixel_analysis, ai_detection, tampering_analysis
+                metadata_analysis, pixel_analysis, ai_detection, tampering_analysis, groq_ai_analysis
             ])
             
             # Generate risk indicators and recommendations
             risk_indicators = self._extract_risk_indicators([
-                metadata_analysis, pixel_analysis, ai_detection, tampering_analysis
+                metadata_analysis, pixel_analysis, ai_detection, tampering_analysis, groq_ai_analysis
             ])
             
             recommendations = self._generate_recommendations(overall_assessment, risk_indicators)
@@ -140,6 +194,7 @@ class ImageAnalysisEngine:
                 pixel_analysis=pixel_analysis,
                 ai_detection_analysis=ai_detection,
                 tampering_analysis=tampering_analysis,
+                groq_ai_analysis=groq_ai_analysis,  # Include Groq analysis
                 reverse_search_analysis=reverse_search,
                 overall_assessment=overall_assessment,
                 confidence_score=confidence_score,
@@ -831,21 +886,517 @@ class ImageAnalysisEngine:
             self.logger.warning(f"Splicing detection failed: {e}")
             return {'splicing_detected': False, 'error': str(e)}
     
-    def _calculate_overall_assessment(self, analyses: List[ImageAnalysisResult]) -> Tuple[AuthenticityResult, float]:
-        """Calculate overall assessment based on individual analyses"""
-        # Weight different analysis types
-        weights = {
-            AnalysisType.METADATA_ANALYSIS: 0.2,
-            AnalysisType.PIXEL_ANALYSIS: 0.25,
-            AnalysisType.AI_DETECTION: 0.3,
-            AnalysisType.TAMPERING_DETECTION: 0.25
+    def _analyze_with_groq(self, image_path: str, pil_image: Image.Image) -> ImageAnalysisResult:
+        """
+        Analyze image using Groq's Vision API (Llama 4 Scout) for AI generation detection
+        Now uses actual image vision capabilities instead of just technical analysis
+        """
+        evidence = {}
+        suspicious_indicators = []
+        confidence = 50.0
+        
+        if not self.groq_enabled:
+            return ImageAnalysisResult(
+                analysis_type=AnalysisType.GROQ_AI_ANALYSIS,
+                confidence=0.0,
+                result=AuthenticityResult.AUTHENTIC,
+                evidence={'error': 'Groq AI not available'},
+                description="Groq AI analysis not available",
+                recommendations=["Use traditional analysis methods"]
+            )
+        
+        try:
+            # Extract basic image properties
+            props = self._extract_image_properties(pil_image)
+            file_stats = os.stat(image_path)
+            file_size = file_stats.st_size
+            
+            # Convert image to base64 for Groq Vision API
+            image_base64 = self._encode_image_for_groq(image_path)
+            if not image_base64:
+                raise Exception("Failed to encode image for Groq analysis")
+            
+            # Create data URL for Groq Vision API
+            image_data_url = f"data:image/jpeg;base64,{image_base64}"
+            
+            # Get basic technical analysis for context
+            import cv2
+            cv_image = cv2.imread(image_path)
+            technical_data = self._extract_technical_features(cv_image, pil_image, {})
+            evidence['technical_analysis'] = technical_data
+            
+            # Create specialized AI detection prompt for Groq Vision
+            vision_prompt = f"""You are an expert AI forensics investigator specializing in detecting AI-generated images and deepfakes for financial document verification. Analyze this image carefully for signs of artificial generation.
+
+DOCUMENT CONTEXT:
+- File Format: {props.get('format', 'Unknown')}
+- Dimensions: {props.get('width', 0)}x{props.get('height', 0)} pixels
+- File Size: {file_size} bytes
+
+DETECTION FOCUS AREAS:
+1. **AI Generation Artifacts**: Look for telltale signs of AI generation (unnatural textures, impossible geometry, perfect symmetries, artificial patterns)
+2. **Document Authenticity**: Assess if this appears to be a genuine scanned/photographed document vs digitally created
+3. **Text Quality**: Examine text rendering, font consistency, and character quality
+4. **Visual Inconsistencies**: Check for lighting anomalies, shadow inconsistencies, or impossible perspectives
+5. **Background Analysis**: Evaluate background patterns and textures for artificial generation
+6. **Object Realism**: Assess if objects, text, and elements appear photographically realistic
+
+Pay special attention to:
+- Unnatural perfection in text or graphics
+- Inconsistent lighting or shadows
+- Impossible or perfect geometric patterns
+- Text that looks too clean or artificially rendered
+- Backgrounds that appear artificially generated
+- Any visual elements that seem "too perfect" for a real document
+
+Provide your analysis in this EXACT format:
+AI_GENERATION_VERDICT: [AUTHENTIC_DOCUMENT/SUSPICIOUS_PATTERNS/LIKELY_AI_GENERATED/DEFINITELY_AI_GENERATED]
+CONFIDENCE_PERCENTAGE: [number from 0-100]
+PRIMARY_AI_INDICATORS: [list up to 3 main AI generation signs, separated by semicolons]
+DOCUMENT_TYPE_ASSESSMENT: [appears to be genuine scanned document / digitally created document / AI-generated content]
+RISK_LEVEL: [LOW/MEDIUM/HIGH/CRITICAL]
+COMPLIANCE_ACTION: [specific recommendation for AML compliance team]
+DETAILED_ANALYSIS: [explain what you see that indicates AI generation or authenticity]
+
+Focus on visual analysis of the actual image content, not technical metadata."""
+
+            try:
+                # Use Groq's Vision API with Llama 4 Scout
+                response = self.groq_client.chat.completions.create(
+                    model="meta-llama/llama-4-scout-17b-16e-instruct",  # Groq Vision model
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text", 
+                                    "text": vision_prompt
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": image_data_url
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    temperature=0.1,  # Low temperature for consistent analysis
+                    max_completion_tokens=800,
+                    top_p=0.9
+                )
+                
+                groq_vision_analysis = response.choices[0].message.content
+                evidence['groq_vision_analysis'] = groq_vision_analysis
+                
+                # Parse Groq Vision response
+                parsed_results = self._parse_groq_vision_response(groq_vision_analysis)
+                evidence.update(parsed_results)
+                
+                # Extract confidence and indicators from vision analysis
+                base_confidence = parsed_results.get('confidence', 50.0)
+                confidence_adjustments = 0
+                
+                # Add technical analysis findings to the vision analysis
+                if technical_data.get('noise_variance', 0) > 200:
+                    confidence_adjustments += 5  # Lower weight since vision is primary
+                    suspicious_indicators.append("High noise variance detected")
+                
+                if technical_data.get('edge_consistency', 1.0) < 0.3:
+                    confidence_adjustments += 8
+                    suspicious_indicators.append("Poor edge consistency")
+                
+                # Extract Groq's AI indicators
+                if parsed_results.get('primary_ai_indicators'):
+                    suspicious_indicators.extend(parsed_results['primary_ai_indicators'])
+                
+                # Calculate final confidence (vision analysis takes precedence)
+                confidence = min(base_confidence + confidence_adjustments, 95.0)
+                
+                # Determine result based on Groq Vision analysis
+                ai_verdict = parsed_results.get('ai_generation_verdict', 'SUSPICIOUS_PATTERNS').upper()
+                
+                if ai_verdict == 'DEFINITELY_AI_GENERATED':
+                    result = AuthenticityResult.AI_GENERATED
+                elif ai_verdict == 'LIKELY_AI_GENERATED':
+                    result = AuthenticityResult.AI_GENERATED
+                elif ai_verdict == 'SUSPICIOUS_PATTERNS' or confidence > 70:
+                    result = AuthenticityResult.SUSPICIOUS
+                elif confidence > 60:
+                    result = AuthenticityResult.SUSPICIOUS  
+                else:
+                    result = AuthenticityResult.AUTHENTIC
+                
+                description = f"Groq Vision AI analysis: {parsed_results.get('detailed_analysis', 'Visual analysis complete')[:200]}..."
+                recommendations = [parsed_results.get('compliance_action', 'Follow standard verification procedures')]
+                
+                self.logger.info(f"✅ Groq Vision analysis complete: {result.value} (confidence: {confidence:.1f}%)")
+                
+            except Exception as api_error:
+                self.logger.warning(f"Groq Vision API call failed: {api_error}")
+                # Fallback to technical analysis only
+                confidence = self._calculate_technical_confidence(technical_data, {})
+                result = AuthenticityResult.SUSPICIOUS if confidence > 60 else AuthenticityResult.AUTHENTIC
+                description = f"Vision analysis failed, using technical analysis: {confidence:.1f}% confidence"
+                recommendations = ["Manual verification recommended", "Vision analysis unavailable"]
+                evidence['api_error'] = str(api_error)
+                suspicious_indicators = ["Groq Vision analysis failed - using technical analysis only"]
+        
+        except Exception as e:
+            self.logger.error(f"Groq Vision analysis error: {e}")
+            confidence = 30.0
+            result = AuthenticityResult.SUSPICIOUS
+            description = f"Analysis failed: {e}"
+            recommendations = ["Manual verification required"]
+            evidence['error'] = str(e)
+        
+        evidence['suspicious_indicators'] = suspicious_indicators
+        evidence['confidence_breakdown'] = {
+            'base_confidence': base_confidence if 'base_confidence' in locals() else 50.0,
+            'technical_adjustments': confidence_adjustments if 'confidence_adjustments' in locals() else 0,
+            'final_confidence': confidence
         }
         
-        weighted_score = sum(a.confidence * weights[a.analysis_type] for a in analyses)
+        return ImageAnalysisResult(
+            analysis_type=AnalysisType.GROQ_AI_ANALYSIS,
+            confidence=confidence,
+            result=result,
+            evidence=evidence,
+            description=description,
+            recommendations=recommendations
+        )
+    
+    def _parse_groq_response(self, groq_text: str) -> Dict[str, Any]:
+        """Parse Groq AI response into structured data"""
+        parsed = {
+            'authenticity': 'SUSPICIOUS',
+            'confidence': 50.0,
+            'key_findings': [],
+            'risk_indicators': [],
+            'recommendation': 'Manual verification required',
+            'explanation': groq_text[:500]  # Truncate for storage
+        }
+        
+        try:
+            lines = groq_text.split('\n')
+            for line in lines:
+                line = line.strip()
+                
+                if line.startswith('AUTHENTICITY:'):
+                    parsed['authenticity'] = line.split(':', 1)[1].strip()
+                elif line.startswith('CONFIDENCE:'):
+                    try:
+                        parsed['confidence'] = float(line.split(':', 1)[1].strip())
+                    except ValueError:
+                        pass
+                elif line.startswith('KEY_FINDINGS:'):
+                    findings = line.split(':', 1)[1].strip()
+                    if findings:
+                        parsed['key_findings'] = [f.strip() for f in findings.split(',')]
+                elif line.startswith('RISK_INDICATORS:'):
+                    indicators = line.split(':', 1)[1].strip()
+                    if indicators:
+                        parsed['risk_indicators'] = [i.strip() for i in indicators.split(',')]
+                elif line.startswith('RECOMMENDATION:'):
+                    parsed['recommendation'] = line.split(':', 1)[1].strip()
+                elif line.startswith('EXPLANATION:'):
+                    parsed['explanation'] = line.split(':', 1)[1].strip()
+        
+        except Exception as e:
+            self.logger.warning(f"Failed to parse Groq response: {e}")
+        
+        return parsed
+    
+    def _extract_technical_features(self, cv_image, pil_image, exif_data):
+        """Extract comprehensive technical features from the image"""
+        features = {}
+        
+        try:
+            if cv_image is not None:
+                gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
+                
+                # Noise analysis
+                blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+                noise = cv2.absdiff(gray, blurred)
+                features['noise_variance'] = float(np.var(noise))
+                
+                # Edge consistency
+                edges = cv2.Canny(gray, 50, 150)
+                edge_density = np.sum(edges > 0) / edges.size
+                features['edge_consistency'] = float(edge_density)
+                
+                # Color analysis
+                hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
+                h_hist = cv2.calcHist([hsv], [0], None, [180], [0, 180])
+                s_hist = cv2.calcHist([hsv], [1], None, [256], [0, 256])
+                features['color_anomaly'] = float(np.var(s_hist) / (np.var(h_hist) + 1e-6))
+                
+                # Compression artifacts
+                features['compression_artifacts'] = self._detect_compression_artifacts_simple(gray)
+                
+                # Symmetry analysis
+                h, w = gray.shape
+                left_half = gray[:, :w//2]
+                right_half = cv2.flip(gray[:, w//2:], 1)
+                min_width = min(left_half.shape[1], right_half.shape[1])
+                if min_width > 0:
+                    left_resized = left_half[:, :min_width]
+                    right_resized = right_half[:, :min_width]
+                    correlation = cv2.matchTemplate(left_resized, right_resized, cv2.TM_CCOEFF_NORMED)
+                    features['symmetry_score'] = float(correlation[0, 0]) if correlation.size > 0 else 0.0
+                else:
+                    features['symmetry_score'] = 0.0
+            
+            # Timestamp analysis
+            features['timestamp_analysis'] = self._analyze_timestamps(exif_data)
+            
+        except Exception as e:
+            self.logger.warning(f"Technical feature extraction failed: {e}")
+            features = {
+                'noise_variance': 0,
+                'edge_consistency': 0.5,
+                'color_anomaly': 1.0,
+                'compression_artifacts': False,
+                'symmetry_score': 0.5,
+                'timestamp_analysis': 'Unknown'
+            }
+        
+        return features
+    
+    def _detect_compression_artifacts_simple(self, gray_image):
+        """Simple compression artifact detection"""
+        try:
+            # Look for 8x8 block boundaries (JPEG signature)
+            h, w = gray_image.shape
+            block_diffs = []
+            
+            for i in range(8, min(h, 200), 8):
+                diff = np.mean(np.abs(gray_image[i] - gray_image[i-1]))
+                block_diffs.append(diff)
+            
+            return len(block_diffs) > 0 and np.mean(block_diffs) > 5
+        except:
+            return False
+    
+    def _analyze_timestamps(self, exif_data):
+        """Analyze timestamp consistency in EXIF data"""
+        try:
+            timestamps = []
+            for field in ['DateTime', 'DateTimeOriginal', 'DateTimeDigitized']:
+                if field in exif_data:
+                    try:
+                        ts = datetime.strptime(exif_data[field], '%Y:%m:%d %H:%M:%S')
+                        timestamps.append(ts)
+                    except:
+                        pass
+            
+            if len(timestamps) >= 2:
+                time_diffs = [(timestamps[i] - timestamps[0]).total_seconds() for i in range(1, len(timestamps))]
+                if any(abs(diff) > 86400 for diff in time_diffs):  # More than 24 hours
+                    return "Inconsistent (>24h difference)"
+                else:
+                    return "Consistent"
+            elif len(timestamps) == 1:
+                return "Single timestamp"
+            else:
+                return "No timestamps"
+        except:
+            return "Analysis failed"
+    
+    def _format_exif_for_analysis(self, exif_data):
+        """Format EXIF data for Groq analysis"""
+        if not exif_data:
+            return "No EXIF metadata found (SUSPICIOUS for camera photos)"
+        
+        important_fields = ['Make', 'Model', 'Software', 'DateTime', 'DateTimeOriginal', 
+                          'DateTimeDigitized', 'ImageWidth', 'ImageLength', 'Orientation']
+        
+        formatted = []
+        for field in important_fields:
+            if field in exif_data:
+                formatted.append(f"- {field}: {exif_data[field]}")
+        
+        if not formatted:
+            return "EXIF present but missing camera/device information (SUSPICIOUS)"
+        
+        return "\n".join(formatted)
+    
+    def _calculate_technical_confidence(self, technical_data, exif_data):
+        """Calculate confidence based on technical analysis alone"""
+        confidence = 40.0  # Base confidence when Groq fails
+        
+        # Adjust based on technical findings (more conservative)
+        if technical_data.get('noise_variance', 0) > 300:  # Higher threshold
+            confidence += 15
+        
+        if technical_data.get('edge_consistency', 1.0) < 0.2:  # Lower threshold
+            confidence += 20
+        
+        if not exif_data:
+            confidence += 20  # Reduced penalty
+        
+        if any(editor in exif_data.get('Software', '').lower() for editor in ['photoshop', 'gimp']):
+            confidence += 30
+        
+        return min(confidence, 85.0)  # Lower cap
+    
+    def _encode_image_for_groq(self, image_path: str) -> str:
+        """
+        Encode image to base64 for Groq Vision API
+        """
+        try:
+            import base64
+            with open(image_path, 'rb') as image_file:
+                encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+            return encoded_string
+        except Exception as e:
+            self.logger.error(f"Failed to encode image for Groq: {e}")
+            return None
+    
+    def _parse_groq_vision_response(self, response_text: str) -> dict:
+        """
+        Parse Groq Vision API response for AI generation analysis
+        """
+        parsed = {}
+        
+        try:
+            lines = response_text.strip().split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                
+                if line.startswith('AI_GENERATION_VERDICT:'):
+                    verdict = line.split(':', 1)[1].strip()
+                    parsed['ai_generation_verdict'] = verdict
+                
+                elif line.startswith('CONFIDENCE_PERCENTAGE:'):
+                    try:
+                        confidence_str = line.split(':', 1)[1].strip()
+                        confidence_num = ''.join(filter(str.isdigit, confidence_str))
+                        if confidence_num:
+                            parsed['confidence'] = float(confidence_num)
+                    except:
+                        parsed['confidence'] = 50.0
+                
+                elif line.startswith('PRIMARY_AI_INDICATORS:'):
+                    indicators_str = line.split(':', 1)[1].strip()
+                    if indicators_str and indicators_str != 'None':
+                        indicators = [ind.strip() for ind in indicators_str.split(';') if ind.strip()]
+                        parsed['primary_ai_indicators'] = indicators
+                
+                elif line.startswith('DOCUMENT_TYPE_ASSESSMENT:'):
+                    assessment = line.split(':', 1)[1].strip()
+                    parsed['document_type_assessment'] = assessment
+                
+                elif line.startswith('RISK_LEVEL:'):
+                    risk = line.split(':', 1)[1].strip()
+                    parsed['risk_level'] = risk
+                
+                elif line.startswith('COMPLIANCE_ACTION:'):
+                    action = line.split(':', 1)[1].strip()
+                    parsed['compliance_action'] = action
+                
+                elif line.startswith('DETAILED_ANALYSIS:'):
+                    analysis = line.split(':', 1)[1].strip()
+                    parsed['detailed_analysis'] = analysis
+            
+            # Set defaults if not found
+            if 'confidence' not in parsed:
+                parsed['confidence'] = 60.0
+            if 'ai_generation_verdict' not in parsed:
+                parsed['ai_generation_verdict'] = 'SUSPICIOUS_PATTERNS'
+            if 'detailed_analysis' not in parsed:
+                parsed['detailed_analysis'] = 'Vision analysis completed with standard assessment'
+            if 'compliance_action' not in parsed:
+                parsed['compliance_action'] = 'Manual verification recommended'
+                
+        except Exception as e:
+            self.logger.warning(f"Error parsing Groq vision response: {e}")
+            parsed = {
+                'confidence': 50.0,
+                'ai_generation_verdict': 'SUSPICIOUS_PATTERNS',
+                'detailed_analysis': 'Response parsing failed - manual review required',
+                'compliance_action': 'Manual verification required'
+            }
+        
+        return parsed
+    
+    def _parse_groq_forensic_response(self, groq_text: str) -> Dict[str, Any]:
+        """Parse Groq forensic response into structured data"""
+        parsed = {
+            'authenticity': 'SUSPICIOUS',
+            'confidence': 50.0,
+            'primary_concerns': [],
+            'technical_indicators': '',
+            'risk_assessment': 'MEDIUM',
+            'recommended_action': 'Manual verification required',
+            'forensic_reasoning': groq_text[:300]  # Truncate for storage
+        }
+        
+        try:
+            lines = groq_text.split('\n')
+            for line in lines:
+                line = line.strip()
+                
+                if line.startswith('AUTHENTICITY_VERDICT:'):
+                    parsed['authenticity'] = line.split(':', 1)[1].strip()
+                elif line.startswith('CONFIDENCE_SCORE:'):
+                    try:
+                        parsed['confidence'] = float(line.split(':', 1)[1].strip())
+                    except ValueError:
+                        pass
+                elif line.startswith('PRIMARY_CONCERNS:'):
+                    concerns = line.split(':', 1)[1].strip()
+                    if concerns and concerns != 'None':
+                        parsed['primary_concerns'] = [c.strip() for c in concerns.split(';') if c.strip()]
+                elif line.startswith('TECHNICAL_INDICATORS:'):
+                    parsed['technical_indicators'] = line.split(':', 1)[1].strip()
+                elif line.startswith('RISK_ASSESSMENT:'):
+                    parsed['risk_assessment'] = line.split(':', 1)[1].strip()
+                elif line.startswith('RECOMMENDED_ACTION:'):
+                    parsed['recommended_action'] = line.split(':', 1)[1].strip()
+                elif line.startswith('FORENSIC_REASONING:'):
+                    parsed['forensic_reasoning'] = line.split(':', 1)[1].strip()
+        
+        except Exception as e:
+            self.logger.warning(f"Failed to parse Groq forensic response: {e}")
+        
+        return parsed
+    
+    def _calculate_overall_assessment(self, analyses: List[ImageAnalysisResult]) -> Tuple[AuthenticityResult, float]:
+        """Calculate overall assessment based on individual analyses"""
+        # Weight different analysis types (including Groq)
+        weights = {
+            AnalysisType.METADATA_ANALYSIS: 0.15,
+            AnalysisType.PIXEL_ANALYSIS: 0.20,
+            AnalysisType.AI_DETECTION: 0.25,
+            AnalysisType.TAMPERING_DETECTION: 0.20,
+            AnalysisType.GROQ_AI_ANALYSIS: 0.20  # Give Groq significant weight
+        }
+        
+        weighted_score = 0.0
+        total_weight = 0.0
+        
+        for analysis in analyses:
+            if analysis.analysis_type in weights:
+                weight = weights[analysis.analysis_type]
+                weighted_score += analysis.confidence * weight
+                total_weight += weight
+        
+        # Normalize by actual weights used
+        if total_weight > 0:
+            weighted_score = weighted_score / total_weight
+        else:
+            weighted_score = 50.0
+        
         random_variance = random.uniform(-3, 3)  # add minor variability
-    
         final_conf = np.clip(weighted_score + random_variance, 0, 100)
-    
+        
+        # Special handling for AI detection results
+        ai_results = [a for a in analyses if a.result == AuthenticityResult.AI_GENERATED]
+        if ai_results and any(a.confidence > 70 for a in ai_results):
+            return AuthenticityResult.AI_GENERATED, max(final_conf, 75)
+        
         # Determine result more smoothly
         if final_conf > 85:
             overall = AuthenticityResult.LIKELY_FAKE
@@ -855,7 +1406,7 @@ class ImageAnalysisEngine:
             overall = AuthenticityResult.AUTHENTIC
         else:
             overall = AuthenticityResult.AUTHENTIC
-    
+        
         return overall, final_conf
     
     def _extract_risk_indicators(self, analyses: List[ImageAnalysisResult]) -> List[str]:
