@@ -1,0 +1,30 @@
+{
+  "analysis_date": "2025-11-01T14:04:39.154736",
+  "dataset_summary": {
+    "total_transactions": 1000,
+    "total_volume": 493335241.46000004,
+    "date_range": {
+      "start": "2024-01-01T05:32:23",
+      "end": "2025-10-20T20:27:38"
+    }
+  },
+  "risk_analysis": {
+    "average_risk_score": 41.497,
+    "high_risk_count": 211,
+    "alerts_generated": 349,
+    "pep_transactions": 96,
+    "sanctions_hits": 539
+  },
+  "ml_performance": {
+    "accuracy": 0.96,
+    "precision": 0.96875,
+    "recall": 0.8157894736842105,
+    "f1_score": 0.8857142857142857,
+    "roc_auc": 0.9821312540610787
+  },
+  "document_processing": {
+    "total_documents": 4,
+    "approval_rate": 0.5,
+    "average_authenticity": 72.25
+  }
+}
