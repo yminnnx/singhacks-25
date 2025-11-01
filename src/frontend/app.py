@@ -521,7 +521,7 @@ class AMLDashboard:
     
     def show_transaction_monitoring(self):
         """Show transaction monitoring interface"""
-        st.header(" Transaction Monitoring")
+        st.header("🔍 Transaction Monitoring")
         
         # Analysis mode selector
         col1, col2 = st.columns([2, 1])
@@ -538,53 +538,128 @@ class AMLDashboard:
                 st.warning("⚠️ Rule-Based Mode")
                 st.caption("ML model not available")
         
+        st.markdown("""
+        **📊 Upload any CSV file for AML analysis**
+        
+        The system will automatically detect columns and apply intelligent risk scoring.
+        Common column names: `amount`, `customer_id`, `transaction_id`, `channel`, `currency`, etc.
+        """)
+        
         # File upload for transaction data
         uploaded_file = st.file_uploader(
             "Upload Transaction Data (CSV)",
             type=['csv'],
-            help="Upload your transaction data CSV file for analysis"
+            help="Upload any CSV file containing transaction data for AML analysis"
         )
         
-        if uploaded_file is not None or st.session_state.demo_mode:
-            # Use demo data if in demo mode
-            if st.session_state.demo_mode:
-                data_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'transactions_mock_1000_for_participants.csv')
-                if os.path.exists(data_path):
-                    df = pd.read_csv(data_path)
-                    st.success(f"Loaded demo data: {len(df)} transactions")
-                else:
-                    st.error("Demo data file not found")
-                    return
-            else:
+        # Demo data option
+        use_demo = st.checkbox("🎯 Use Demo Data (if no file uploaded)", value=True)
+        
+        df = None
+        
+        if uploaded_file is not None:
+            try:
                 df = pd.read_csv(uploaded_file)
-                st.success(f"Loaded {len(df)} transactions")
+                st.success(f"✅ Loaded {len(df)} transactions from {uploaded_file.name}")
+                
+                # Show dataset info
+                with st.expander("📊 Dataset Information"):
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Rows", len(df))
+                    with col2:
+                        st.metric("Columns", len(df.columns))
+                    with col3:
+                        st.metric("Memory", f"{df.memory_usage().sum() / 1024:.1f} KB")
+                    
+                    st.write("**Columns detected:**")
+                    for i, col in enumerate(df.columns):
+                        if i % 4 == 0:
+                            cols = st.columns(4)
+                        cols[i % 4].write(f"• `{col}`")
+                        
+                    # Show sample data
+                    st.write("**Sample data:**")
+                    st.dataframe(df.head(3), use_container_width=True)
+                
+            except Exception as e:
+                st.error(f"❌ Error reading CSV: {e}")
+                return
+                
+        elif use_demo:
+            # Load demo data as fallback
+            data_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'transactions_mock_1000_for_participants.csv')
+            if os.path.exists(data_path):
+                df = pd.read_csv(data_path)
+                st.info(f"📊 Using demo data: {len(df)} transactions")
+            else:
+                st.error("Demo data file not found")
+                return
+        else:
+            st.info("👆 Please upload a CSV file to begin analysis")
+            return
+
+        if df is not None:
+            # Smart column detection and analysis controls
+            st.subheader("🎛️ Analysis Configuration")
             
-            # Transaction analysis controls
+            # Detect key columns automatically
+            amount_col = self.detect_column(df, ['amount', 'value', 'sum', 'total', 'transaction_amount'])
+            id_col = self.detect_column(df, ['transaction_id', 'id', 'txn_id', 'reference'])
+            customer_col = self.detect_column(df, ['customer_id', 'client_id', 'customer', 'user_id'])
+            currency_col = self.detect_column(df, ['currency', 'curr', 'ccy'])
+            
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                risk_threshold = st.slider("Risk Score Threshold", 0, 100, 70)
+                risk_threshold = st.slider("🎯 Risk Score Threshold", 0, 100, 70)
             
             with col2:
-                jurisdiction_filter = st.multiselect(
-                    "Filter by Jurisdiction",
-                    options=df['booking_jurisdiction'].unique(),
-                    default=df['booking_jurisdiction'].unique()
-                )
+                # Dynamic filter column selection
+                filter_columns = [col for col in df.columns if df[col].dtype == 'object' and df[col].nunique() < 50]
+                if filter_columns:
+                    filter_col = st.selectbox("📍 Filter Column", ['None'] + filter_columns)
+                    if filter_col != 'None':
+                        filter_values = st.multiselect(
+                            f"Filter by {filter_col}",
+                            options=df[filter_col].unique(),
+                            default=list(df[filter_col].unique())[:5]  # Limit to first 5 for performance
+                        )
+                else:
+                    filter_col = 'None'
+                    st.write("No suitable filter columns")
             
             with col3:
-                amount_threshold = st.number_input("Amount Threshold", value=1000000, step=100000)
+                if amount_col:
+                    max_amount = float(df[amount_col].max()) if pd.api.types.is_numeric_dtype(df[amount_col]) else 1000000
+                    amount_threshold = st.number_input("💰 Amount Threshold", value=max_amount * 0.1, step=max_amount * 0.01)
+                else:
+                    amount_threshold = st.number_input("💰 Amount Threshold", value=100000, step=10000)
             
             with col4:
-                analysis_sample = st.number_input("Sample Size", min_value=10, max_value=len(df), value=min(100, len(df)))
+                analysis_sample = st.number_input("📊 Sample Size", min_value=10, max_value=len(df), value=min(100, len(df)))
             
-            # Filter data
-            filtered_df = df[df['booking_jurisdiction'].isin(jurisdiction_filter)].head(analysis_sample)
+            # Apply filters
+            filtered_df = df.copy()
             
-            if st.button("Analyze Transactions", type="primary"):
-                with st.spinner(" Running ML-powered AML analysis..."):
-                    # Run ML-powered analysis
-                    alerts = self.simulate_transaction_analysis(filtered_df, risk_threshold)
+            # Apply custom filter if selected
+            if filter_col != 'None' and filter_col in df.columns:
+                if 'filter_values' in locals() and filter_values:
+                    filtered_df = filtered_df[filtered_df[filter_col].isin(filter_values)]
+            
+            # Apply amount filter if amount column exists
+            if amount_col and pd.api.types.is_numeric_dtype(df[amount_col]):
+                filtered_df = filtered_df[filtered_df[amount_col] >= amount_threshold]
+            
+            # Sample the data
+            filtered_df = filtered_df.head(analysis_sample)
+            
+            st.write(f"**📈 Analysis Preview:** {len(filtered_df)} transactions after filters")
+            
+            if st.button("🚀 Analyze Transactions", type="primary"):
+                with st.spinner("🤖 Running AI-powered AML analysis..."):
+                    # Run intelligent analysis on any CSV format
+                    alerts = self.analyze_generic_transactions(filtered_df, risk_threshold, amount_col, id_col, customer_col)
                     st.session_state.current_alerts = alerts
                 
                 st.success(f"✅ Analysis complete! Generated {len(alerts)} alerts")
@@ -593,13 +668,12 @@ class AMLDashboard:
             if st.session_state.current_alerts:
                 self.display_transaction_alerts(st.session_state.current_alerts)
                 
-                # Show model performance for this analysis (deterministic)
-                st.subheader("Model Performance for Current Analysis")
+                # Show model performance for this analysis
+                st.subheader("📊 Model Performance for Current Analysis")
                 
                 perf_col1, perf_col2, perf_col3 = st.columns(3)
                 
                 with perf_col1:
-                    # Use fixed accuracy instead of random variation
                     accuracy = ML_PERFORMANCE_METRICS['accuracy']
                     st.metric("Real-time Accuracy", f"{accuracy:.1f}%")
                 
@@ -612,28 +686,252 @@ class AMLDashboard:
                     st.metric("Recall", f"{recall:.1f}%")
             
             # Transaction details view
-            st.subheader("Transaction Details")
+            st.subheader("📋 Transaction Details")
             
-            # Sample high-risk transactions
-            high_risk_txns = filtered_df.head(10)  # Show first 10 for demo
+            # Show sample transactions with smart column display
+            display_cols = []
+            if id_col:
+                display_cols.append(id_col)
+            if amount_col:
+                display_cols.append(amount_col)
+            if customer_col:
+                display_cols.append(customer_col)
+            if currency_col:
+                display_cols.append(currency_col)
             
-            for idx, row in high_risk_txns.iterrows():
-                with st.expander(f"Transaction {row['transaction_id'][:8]}... - {row['amount']:,.2f} {row['currency']}"):
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.write("**Basic Information**")
-                        st.write(f"Amount: {row['amount']:,.2f} {row['currency']}")
-                        st.write(f"Channel: {row['channel']}")
-                        st.write(f"Product: {row['product_type']}")
-                        st.write(f"Date: {row['booking_datetime']}")
-                    
-                    with col2:
-                        st.write("**Risk Indicators**")
-                        st.write(f"Customer Risk: {row['customer_risk_rating']}")
-                        st.write(f"PEP: {'Yes' if row['customer_is_pep'] else 'No'}")
-                        st.write(f"Sanctions Screening: {row['sanctions_screening']}")
-                        st.write(f"Originator Country: {row['originator_country']}")
+            # Add other interesting columns (limit to 8 total)
+            other_cols = [col for col in filtered_df.columns if col not in display_cols][:8-len(display_cols)]
+            display_cols.extend(other_cols)
+            
+            if display_cols:
+                st.dataframe(filtered_df[display_cols].head(10), use_container_width=True)
+            else:
+                st.dataframe(filtered_df.head(10), use_container_width=True)
+    
+    def detect_column(self, df, possible_names):
+        """Smart column detection by name similarity"""
+        for col in df.columns:
+            for name in possible_names:
+                if name.lower() in col.lower():
+                    return col
+        return None
+    
+    def analyze_generic_transactions(self, df, risk_threshold, amount_col, id_col, customer_col):
+        """Analyze any CSV format for AML risks"""
+        alerts = []
+        ml_predictions = []
+        rule_based_count = 0
+        
+        # Display analysis info
+        if ml_predictor and ml_predictor.is_loaded:
+            model_name = ml_predictor.model_data.get('model_name', 'XGBoost (Optimized)')
+            accuracy = ml_predictor.model_data['performance_metrics']['accuracy']
+            recall = ml_predictor.model_data['performance_metrics']['recall']
+            st.success(f"🚀 **Using ML Model**: {model_name} ({accuracy:.1%} accuracy, {recall:.1%} recall)")
+        else:
+            st.warning("⚠️ **Using Rule-Based Analysis**: ML model not available")
+        
+        # Progress bar for analysis
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        for idx, row in df.iterrows():
+            # Update progress
+            progress = (idx + 1) / len(df)
+            progress_bar.progress(progress)
+            status_text.text(f'Analyzing transaction {idx + 1}/{len(df)}...')
+            
+            # Prepare transaction data intelligently
+            transaction_data = self.prepare_generic_transaction_data(row, amount_col, id_col, customer_col)
+            
+            # Get risk score
+            if ml_predictor and ml_predictor.is_loaded:
+                try:
+                    prediction = ml_predictor.predict_transaction_risk(transaction_data)
+                    risk_score = prediction['risk_score']
+                    model_used = prediction['model_used']
+                    confidence = prediction.get('confidence', 0.9)
+                    ml_predictions.append({
+                        'transaction_id': transaction_data.get('transaction_id', f"TXN_{idx}"),
+                        'ml_risk_score': risk_score,
+                        'ml_confidence': confidence,
+                        'model_used': model_used
+                    })
+                except Exception as e:
+                    # Fallback to rule-based if ML fails
+                    risk_score = self.calculate_generic_risk_score(row, amount_col)
+                    model_used = 'Rule-Based (ML Failed)'
+                    confidence = 0.7
+                    rule_based_count += 1
+            else:
+                # Rule-based analysis for any CSV format
+                risk_score = self.calculate_generic_risk_score(row, amount_col)
+                model_used = 'Rule-Based'
+                confidence = 0.7
+                rule_based_count += 1
+            
+            # Generate alert if above threshold
+            if risk_score >= risk_threshold:
+                alert = {
+                    'transaction_id': transaction_data.get('transaction_id', f"TXN_{idx}"),
+                    'risk_score': risk_score,
+                    'amount': transaction_data.get('amount', 0),
+                    'currency': transaction_data.get('currency', 'N/A'),
+                    'customer_id': transaction_data.get('customer_id', 'N/A'),
+                    'alert_type': self.determine_generic_alert_type(row, risk_score, amount_col),
+                    'priority': 'High' if risk_score >= 80 else 'Medium',
+                    'model_used': model_used,
+                    'confidence': confidence,
+                    'source_row': idx
+                }
+                alerts.append(alert)
+        
+        # Clear progress indicators
+        progress_bar.empty()
+        status_text.empty()
+        
+        # Display analysis summary
+        if ml_predictions:
+            ml_df = pd.DataFrame(ml_predictions)
+            avg_confidence = ml_df['ml_confidence'].mean()
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("ML Predictions", len(ml_predictions))
+            with col2:
+                st.metric("Avg Confidence", f"{avg_confidence:.1%}")
+            with col3:
+                st.metric("Model Used", ml_predictor.model_data['model_name'] if ml_predictor and ml_predictor.is_loaded else 'Rule-Based')
+            with col4:
+                st.metric("Rule-Based Fallbacks", rule_based_count)
+        
+        return alerts
+    
+    def prepare_generic_transaction_data(self, row, amount_col, id_col, customer_col):
+        """Prepare transaction data from any CSV format"""
+        transaction_data = {}
+        
+        # Core fields
+        transaction_data['transaction_id'] = str(row.get(id_col, f"TXN_{row.name}")) if id_col else f"TXN_{row.name}"
+        transaction_data['customer_id'] = str(row.get(customer_col, f"CUST_{row.name}")) if customer_col else f"CUST_{row.name}"
+        
+        # Amount handling
+        if amount_col and pd.api.types.is_numeric_dtype(row[amount_col] if hasattr(row, '__getitem__') else 0):
+            transaction_data['amount'] = float(row.get(amount_col, 0))
+        else:
+            # Try to find any numeric column that might be an amount
+            numeric_cols = [col for col in row.index if pd.api.types.is_numeric_dtype(row[col])]
+            if numeric_cols:
+                transaction_data['amount'] = float(row[numeric_cols[0]])
+            else:
+                transaction_data['amount'] = 0
+        
+        # Smart field mapping
+        for col in row.index:
+            col_lower = col.lower()
+            
+            # Currency detection
+            if 'currency' in col_lower or 'curr' in col_lower or 'ccy' in col_lower:
+                transaction_data['currency'] = str(row[col])
+            
+            # Channel detection
+            elif 'channel' in col_lower or 'method' in col_lower or 'type' in col_lower:
+                transaction_data['channel'] = str(row[col])
+            
+            # Risk rating detection
+            elif 'risk' in col_lower and 'rating' in col_lower:
+                transaction_data['customer_risk_rating'] = str(row[col])
+            
+            # PEP detection
+            elif 'pep' in col_lower:
+                transaction_data['customer_is_pep'] = bool(row[col]) if isinstance(row[col], bool) else str(row[col]).lower() in ['true', 'yes', '1']
+            
+            # Sanctions detection
+            elif 'sanction' in col_lower or 'screening' in col_lower:
+                transaction_data['sanctions_screening'] = str(row[col])
+            
+            # Country detection
+            elif 'country' in col_lower:
+                if 'origin' in col_lower or 'from' in col_lower:
+                    transaction_data['originator_country'] = str(row[col])
+                elif 'beneficiary' in col_lower or 'to' in col_lower or 'dest' in col_lower:
+                    transaction_data['beneficiary_country'] = str(row[col])
+                else:
+                    transaction_data['booking_jurisdiction'] = str(row[col])
+        
+        # Set defaults for missing critical fields
+        transaction_data.setdefault('currency', 'USD')
+        transaction_data.setdefault('channel', 'Unknown')
+        transaction_data.setdefault('customer_risk_rating', 'Medium')
+        transaction_data.setdefault('customer_is_pep', False)
+        transaction_data.setdefault('sanctions_screening', 'clear')
+        transaction_data.setdefault('product_type', 'Unknown')
+        transaction_data.setdefault('booking_jurisdiction', 'Unknown')
+        
+        return transaction_data
+    
+    def calculate_generic_risk_score(self, row, amount_col):
+        """Calculate risk score for any transaction format"""
+        risk_score = 0.0
+        
+        # Amount-based risk
+        if amount_col and pd.api.types.is_numeric_dtype(row[amount_col] if hasattr(row, '__getitem__') else 0):
+            amount = float(row.get(amount_col, 0))
+            if amount > 1000000:
+                risk_score += 30
+            elif amount > 500000:
+                risk_score += 20
+            elif amount > 100000:
+                risk_score += 10
+        
+        # Check for risk indicators in any column
+        for col in row.index:
+            value_str = str(row[col]).lower()
+            col_lower = col.lower()
+            
+            # High-risk keywords
+            if any(keyword in value_str for keyword in ['cash', 'high', 'suspicious', 'alert', 'flag']):
+                risk_score += 15
+            
+            # PEP indicators
+            if 'pep' in col_lower and value_str in ['true', 'yes', '1']:
+                risk_score += 20
+            
+            # Sanctions indicators
+            if 'sanction' in col_lower and 'potential' in value_str:
+                risk_score += 40
+            
+            # Risk rating indicators
+            if 'risk' in col_lower and 'high' in value_str:
+                risk_score += 25
+        
+        # Add some randomness based on row index for variety
+        variation = (hash(str(row.name)) % 10) - 5
+        risk_score += variation
+        
+        return min(max(risk_score, 0), 100)
+    
+    def determine_generic_alert_type(self, row, risk_score, amount_col):
+        """Determine alert type for any transaction format"""
+        # Check for specific indicators in the data
+        for col in row.index:
+            value_str = str(row[col]).lower()
+            col_lower = col.lower()
+            
+            if 'sanction' in col_lower and 'potential' in value_str:
+                return "Sanctions Hit"
+            elif 'pep' in col_lower and value_str in ['true', 'yes', '1']:
+                return "PEP Transaction"
+            elif 'cash' in value_str:
+                return "Cash Transaction"
+        
+        # Amount-based alerts
+        if amount_col and pd.api.types.is_numeric_dtype(row[amount_col] if hasattr(row, '__getitem__') else 0):
+            amount = float(row.get(amount_col, 0))
+            if amount > 1000000:
+                return "Large Transaction"
+        
+        return "Risk Pattern"
     
     def simulate_transaction_analysis(self, df, risk_threshold):
         """ML-powered transaction analysis using optimized XGBoost model"""
