@@ -200,18 +200,25 @@ def get_ml_predictor(model_path: str = None) -> AMLModelPredictor:
     
     if _global_predictor is None:
         if model_path is None:
-            # Try to find model in standard locations
+            # Try to find model in standard locations (prioritize optimized model)
             possible_paths = [
-                'aml_risk_model.pkl',  # In current src directory
+                'models/aml_risk_model_optimized.pkl',  # Optimized model first
+                'aml_risk_model_optimized.pkl',
                 'models/aml_risk_model.pkl',
+                'aml_risk_model.pkl',  # In current src directory
+                '../models/aml_risk_model_optimized.pkl',
                 '../models/aml_risk_model.pkl',
+                '../../models/aml_risk_model_optimized.pkl',
                 '../../models/aml_risk_model.pkl',
+                os.path.join(os.path.dirname(__file__), '..', 'models', 'aml_risk_model_optimized.pkl'),
+                os.path.join(os.path.dirname(__file__), '..', 'models', 'aml_risk_model.pkl'),
                 os.path.join(os.path.dirname(__file__), 'aml_risk_model.pkl')
             ]
             
             for path in possible_paths:
                 if os.path.exists(path):
                     model_path = path
+                    print(f"🎯 Found model at: {path}")
                     break
         
         _global_predictor = AMLModelPredictor(model_path)

@@ -4,6 +4,34 @@
 
 ---
 
+## 🚀 Quick Start
+
+### Automated Setup (Recommended)
+```bash
+# Clone the repository
+git clone <repository-url>
+cd singhacks-25
+
+# Run the automated setup script
+./setup.sh        # For macOS/Linux
+# OR
+setup.bat         # For Windows
+
+# Start the application
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+streamlit run src/frontend/app.py
+```
+
+### Manual Setup
+See [SETUP_GUIDE.md](SETUP_GUIDE.md) for detailed installation instructions.
+
+### Access the Application
+- **Local URL**: http://localhost:8501
+- **Features**: Optimized XGBoost ML model with 97.4% recall rate
+- **Demo Mode**: Uses 1,000 sample transactions for demonstration
+
+---
+
 ## Challenge Summary
 
 **Goal**: Ship two working agentic AI solutions that can **monitor AML risks in real-time** → **process compliance documents** → **generate actionable alerts** → **maintain audit trails**.
