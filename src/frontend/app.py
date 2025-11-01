@@ -57,8 +57,13 @@ try:
     from document_processor import DocumentProcessor
     from image_analysis import ImageAnalysisEngine
     from ml_model_integration import get_ml_predictor
+    # Import Groq-enhanced corroborator with proper path
+    from part2_document_corroboration.groq_corroborator import get_groq_corroborator
 except ImportError as e:
     st.error(f"Import error: {e}")
+    # Create a fallback function if import fails
+    def get_groq_corroborator():
+        return None
 
 # Initialize ML model predictor
 @st.cache_resource
@@ -865,59 +870,381 @@ class AMLDashboard:
         )
     
     def show_document_corroboration(self):
-        """Show document corroboration interface"""
-        st.header("Document Corroboration")
+        """Show Groq-enhanced document corroboration interface"""
+        st.header("🔍 Document Corroboration with Groq AI")
+        
+        st.markdown("""
+        **Advanced AI-powered document verification for AML compliance**
+        
+        This system uses Groq AI to perform comprehensive document analysis including:
+        - 🔍 **Fraud Detection**: AI-powered identification of forged or manipulated documents
+        - 📋 **Completeness Verification**: Ensures all required elements are present
+        - 🔒 **Authenticity Assessment**: Verifies document genuineness and integrity  
+        - ⚖️ **Compliance Checking**: Validates against AML/KYC regulatory requirements
+        """)
+        
+        # Groq Status Indicator
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+            if os.getenv('GROQ_API_KEY'):
+                st.success("🤖 Groq AI Document Analysis: **ACTIVE**")
+            else:
+                st.warning("⚠️ Groq AI not configured - using fallback analysis")
+        except:
+            st.warning("⚠️ Groq AI not available")
+        
+        # Document Context Input
+        with st.expander("📋 Document Context (Optional but Recommended)"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                customer_type = st.selectbox(
+                    "Customer Type", 
+                    ["Individual", "Corporate", "Trust", "Foundation", "High Net Worth", "PEP"]
+                )
+                transaction_purpose = st.text_input(
+                    "Transaction Purpose",
+                    placeholder="e.g., Real estate purchase, Trade finance, Investment"
+                )
+            
+            with col2:
+                document_purpose = st.selectbox(
+                    "Document Purpose",
+                    ["Identity Verification", "Address Proof", "Income Verification", 
+                     "Source of Funds", "Business Registration", "Other"]
+                )
+                regulatory_requirements = st.selectbox(
+                    "Regulatory Framework",
+                    ["Swiss AML", "EU AML Directive", "FATF Standards", "US FinCEN", "Custom"]
+                )
         
         # File upload
         uploaded_file = st.file_uploader(
-            "Upload Document for Analysis",
+            "Upload Document for AI Analysis",
             type=['pdf', 'png', 'jpg', 'jpeg', 'txt', 'docx'],
-            help="Upload PDF, image, or text documents for corroboration analysis"
+            help="Upload PDF, image, or text documents for comprehensive AI-powered corroboration analysis"
         )
         
         if uploaded_file is not None:
             # Display file info
-            st.write(f"**File:** {uploaded_file.name}")
-            st.write(f"**Size:** {uploaded_file.size} bytes")
-            st.write(f"**Type:** {uploaded_file.type}")
+            col1, col2, col3 = st.columns(3)
             
-            if st.button("Analyze Document"):
-                with st.spinner("Analyzing document..."):
-                    # Simulate document analysis
-                    analysis_result = self.simulate_document_analysis(uploaded_file)
+            with col1:
+                st.metric("File Name", uploaded_file.name)
+            with col2:
+                st.metric("File Size", f"{uploaded_file.size:,} bytes")
+            with col3:
+                st.metric("File Type", uploaded_file.type)
+            
+            # Analysis button
+            if st.button("🚀 Analyze with Groq AI", type="primary"):
+                # Prepare context
+                context = {
+                    'customer_type': customer_type,
+                    'transaction_purpose': transaction_purpose,
+                    'document_purpose': document_purpose,
+                    'regulatory_requirements': regulatory_requirements
+                }
                 
-                # Display results
-                self.display_document_analysis_results(analysis_result)
+                with st.spinner("🤖 Groq AI is analyzing your document..."):
+                    # Use the new Groq-powered analysis
+                    analysis_result = self.groq_document_analysis(uploaded_file, context)
+                
+                # Display comprehensive results
+                self.display_groq_document_results(analysis_result)
+        
+        # Sample document analysis
+        st.subheader("🎯 Test with Sample Documents")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("📄 Analyze Swiss Purchase Agreement"):
+                sample_context = {
+                    'customer_type': 'High Net Worth',
+                    'transaction_purpose': 'Real estate acquisition',
+                    'document_purpose': 'Source of Funds',
+                    'regulatory_requirements': 'Swiss AML'
+                }
+                sample_file_path = "/Users/heokie/Desktop/y3s1/singhacks-25/Swiss_Home_Purchase_Agreement_Scanned_Noise_forparticipants.pdf"
+                if os.path.exists(sample_file_path):
+                    with st.spinner("🤖 Analyzing sample document..."):
+                        result = self.analyze_sample_document(sample_file_path, sample_context)
+                    self.display_groq_document_results(result)
+                else:
+                    st.error("Sample document not found")
+        
+        with col2:
+            if st.button("🔍 Generate Analysis Report"):
+                st.info("Analysis report generation would be implemented here")
         
         # Recent document analyses
-        st.subheader("Recent Document Analyses")
+        st.subheader("📊 Recent Document Analyses")
         
+        # Enhanced sample data with Groq AI results
         sample_docs = [
             {
-                "filename": "swiss_purchase_agreement.pdf",
-                "processed": "2024-11-01 14:25:00",
-                "risk_score": 25,
-                "status": "Approved",
-                "issues": 2
+                "Document": "swiss_purchase_agreement.pdf",
+                "Processed": "2025-11-01 14:25:00",
+                "Risk Score": 15,
+                "Authenticity": 95,
+                "Completeness": 98,
+                "Status": "✅ APPROVED",
+                "AI Confidence": "94%"
             },
             {
-                "filename": "identity_document.jpg", 
-                "processed": "2024-11-01 13:30:00",
-                "risk_score": 85,
-                "status": "Rejected",
-                "issues": 5
+                "Document": "identity_document.jpg", 
+                "Processed": "2025-11-01 13:30:00",
+                "Risk Score": 75,
+                "Authenticity": 45,
+                "Completeness": 60,
+                "Status": "❌ REJECTED",
+                "AI Confidence": "89%"
             },
             {
-                "filename": "bank_statement.pdf",
-                "processed": "2024-11-01 12:45:00", 
-                "risk_score": 15,
-                "status": "Approved",
-                "issues": 1
+                "Document": "bank_statement.pdf",
+                "Processed": "2025-11-01 12:45:00", 
+                "Risk Score": 25,
+                "Authenticity": 88,
+                "Completeness": 92,
+                "Status": "📋 REVIEW",
+                "AI Confidence": "91%"
             }
         ]
         
         docs_df = pd.DataFrame(sample_docs)
         st.dataframe(docs_df, use_container_width=True)
+    
+    def simulate_document_analysis_as_object(self, uploaded_file):
+        """Create a fallback analysis result that matches the expected object structure"""
+        from datetime import datetime
+        import uuid
+        
+        # Create a simple class to hold the results
+        class FallbackAnalysisResult:
+            def __init__(self):
+                self.document_id = f"FALLBACK_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:4]}"
+                self.risk_score = 25
+                self.authenticity_score = 85
+                self.completeness_score = 90
+                self.consistency_score = 80
+                self.approval_status = "REVIEW"
+                self.confidence_level = 0.75
+                self.compliance_assessment = "Document analysis completed using fallback system. Groq AI not available."
+                self.fraud_indicators = ["Unable to perform AI analysis"]
+                self.missing_elements = []
+                self.inconsistencies = []
+                self.recommendations = ["Manual review recommended", "Verify document authenticity through alternative means"]
+                self.document_type = "Unknown"
+                self.format_issues = []
+                self.quality_assessment = "Standard"
+                self.metadata_analysis = {
+                    "file_size": uploaded_file.size,
+                    "file_name": uploaded_file.name,
+                    "analysis_method": "Fallback"
+                }
+                self.processing_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        return FallbackAnalysisResult()
+    
+    def groq_document_analysis(self, uploaded_file, context):
+        """Perform Groq AI document analysis"""
+        try:
+            # Import the Groq corroborator
+            corroborator = get_groq_corroborator()
+            
+            if corroborator is None:
+                st.warning("Groq corroborator not available, using fallback analysis")
+                return self.simulate_document_analysis_as_object(uploaded_file)
+            
+            # Get file content
+            file_content = uploaded_file.getvalue()
+            
+            # Perform analysis
+            result = corroborator.analyze_document(file_content, uploaded_file.name, context)
+            
+            return result
+            
+        except Exception as e:
+            st.error(f"Groq analysis failed: {str(e)}")
+            # Fallback to simplified analysis
+            return self.simulate_document_analysis_as_object(uploaded_file)
+    
+    def analyze_sample_document(self, file_path, context):
+        """Analyze sample document"""
+        try:
+            corroborator = get_groq_corroborator()
+            
+            if corroborator is None:
+                st.warning("Groq corroborator not available for sample analysis")
+                return None
+            
+            # Read file content
+            with open(file_path, 'rb') as f:
+                file_content = f.read()
+            
+            # Perform analysis
+            result = corroborator.analyze_document(file_content, os.path.basename(file_path), context)
+            
+            return result
+            
+        except Exception as e:
+            st.error(f"Sample analysis failed: {str(e)}")
+            return None
+    
+    def display_groq_document_results(self, result):
+        """Display comprehensive Groq AI document analysis results"""
+        if not result:
+            st.error("No analysis results available")
+            return
+        
+        # Main status display
+        st.subheader("📊 AI Analysis Results")
+        
+        # Status indicator with color coding
+        if result.approval_status == "APPROVED":
+            st.success(f"✅ **{result.approval_status}** - Document cleared for processing")
+        elif result.approval_status == "REJECTED":
+            st.error(f"❌ **{result.approval_status}** - Document rejected")
+        else:
+            st.warning(f"📋 **{result.approval_status}** - Manual review required")
+        
+        # Key metrics
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        with col1:
+            risk_color = "🟢" if result.risk_score < 30 else "🟡" if result.risk_score < 60 else "🔴"
+            st.metric("Risk Score", f"{risk_color} {result.risk_score}/100")
+        
+        with col2:
+            auth_color = "🟢" if result.authenticity_score > 80 else "🟡" if result.authenticity_score > 60 else "🔴"
+            st.metric("Authenticity", f"{auth_color} {result.authenticity_score}/100")
+        
+        with col3:
+            comp_color = "🟢" if result.completeness_score > 80 else "🟡" if result.completeness_score > 60 else "🔴"
+            st.metric("Completeness", f"{comp_color} {result.completeness_score}/100")
+        
+        with col4:
+            cons_color = "🟢" if result.consistency_score > 80 else "🟡" if result.consistency_score > 60 else "🔴"
+            st.metric("Consistency", f"{cons_color} {result.consistency_score}/100")
+        
+        with col5:
+            st.metric("AI Confidence", f"🤖 {result.confidence_level:.1%}")
+        
+        # AI Compliance Assessment
+        st.subheader("🤖 Groq AI Compliance Assessment")
+        st.write(result.compliance_assessment)
+        
+        # Detailed findings
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Fraud indicators
+            if result.fraud_indicators:
+                st.subheader("⚠️ Fraud Indicators")
+                for indicator in result.fraud_indicators:
+                    st.write(f"🔴 {indicator}")
+            
+            # Missing elements
+            if result.missing_elements:
+                st.subheader("📋 Missing Elements")
+                for element in result.missing_elements:
+                    st.write(f"🟡 {element}")
+        
+        with col2:
+            # Inconsistencies
+            if result.inconsistencies:
+                st.subheader("🔍 Inconsistencies")
+                for inconsistency in result.inconsistencies:
+                    st.write(f"🟠 {inconsistency}")
+            
+            # Format issues
+            if result.format_issues:
+                st.subheader("📄 Format Issues")
+                for issue in result.format_issues:
+                    st.write(f"⚪ {issue}")
+        
+        # AI Recommendations
+        if result.recommendations:
+            st.subheader("💡 AI Recommendations")
+            for i, rec in enumerate(result.recommendations, 1):
+                st.write(f"{i}. {rec}")
+        
+        # Technical details
+        with st.expander("🔧 Technical Analysis Details"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**Document Information:**")
+                st.write(f"• Document ID: {result.document_id}")
+                st.write(f"• Document Type: {result.document_type}")
+                st.write(f"• Quality Assessment: {result.quality_assessment}")
+                st.write(f"• Processing Time: {result.processing_timestamp}")
+            
+            with col2:
+                st.write("**Metadata Analysis:**")
+                st.json(result.metadata_analysis)
+        
+        # Export options
+        with st.expander("📤 Export Options"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("📄 Generate Compliance Report"):
+                    report_data = {
+                        "document_id": result.document_id,
+                        "analysis_timestamp": result.processing_timestamp,
+                        "approval_status": result.approval_status,
+                        "risk_assessment": {
+                            "risk_score": result.risk_score,
+                            "authenticity_score": result.authenticity_score,
+                            "completeness_score": result.completeness_score,
+                            "consistency_score": result.consistency_score
+                        },
+                        "ai_analysis": {
+                            "compliance_assessment": result.compliance_assessment,
+                            "fraud_indicators": result.fraud_indicators,
+                            "recommendations": result.recommendations,
+                            "confidence_level": result.confidence_level
+                        }
+                    }
+                    
+                    report_json = json.dumps(report_data, indent=2)
+                    st.download_button(
+                        label="📥 Download JSON Report",
+                        data=report_json,
+                        file_name=f"document_analysis_{result.document_id}.json",
+                        mime="application/json"
+                    )
+            
+            with col2:
+                if st.button("📊 Generate Summary"):
+                    summary = f"""
+DOCUMENT ANALYSIS SUMMARY
+========================
+Document ID: {result.document_id}
+Analysis Date: {result.processing_timestamp}
+Approval Status: {result.approval_status}
+
+RISK ASSESSMENT:
+- Overall Risk: {result.risk_score}/100
+- Authenticity: {result.authenticity_score}/100
+- Completeness: {result.completeness_score}/100
+- AI Confidence: {result.confidence_level:.1%}
+
+COMPLIANCE ASSESSMENT:
+{result.compliance_assessment}
+
+RECOMMENDATIONS:
+{chr(10).join([f"• {rec}" for rec in result.recommendations])}
+"""
+                    st.download_button(
+                        label="📥 Download Summary",
+                        data=summary,
+                        file_name=f"summary_{result.document_id}.txt",
+                        mime="text/plain"
+                    )
     
     def simulate_document_analysis(self, uploaded_file):
         """Simulate document analysis for demo (deterministic)"""
