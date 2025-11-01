@@ -23,7 +23,12 @@ from datetime import datetime, timedelta
 import io
 import sys
 import os
-import shap
+
+# Optional import for shap
+try:
+    import shap
+except ImportError:
+    shap = None
 
 # Add parent directories to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'part1_aml_monitoring'))
@@ -49,19 +54,56 @@ except ImportError as e:
         'f1_score': 87.1, 'false_positive_rate': 21.3, 'auc_roc': 98.7
     }
 
-# Import our custom modules
+# Import our custom modules with individual error handling
+transaction_engine = None
+alert_manager = None
+rules_engine = None
+document_processor = None
+image_analyzer = None
+ml_predictor = None
+get_groq_corroborator = None
+
 try:
     from transaction_analysis import TransactionAnalysisEngine, RiskLevel, AlertType
+except ImportError as e:
+    st.warning(f"Transaction analysis module not available: {e}")
+    TransactionAnalysisEngine = None
+
+try:
     from alert_system import AlertManager, AlertStatus
+except ImportError as e:
+    st.warning(f"Alert system module not available: {e}")
+    AlertManager = None
+
+try:
     from regulatory_rules import RegulatoryRulesEngine
+except ImportError as e:
+    st.warning(f"Regulatory rules module not available: {e}")
+    RegulatoryRulesEngine = None
+
+try:
     from document_processor import DocumentProcessor
+except ImportError as e:
+    st.warning(f"Document processor module not available: {e}")
+    DocumentProcessor = None
+
+try:
     from image_analysis import ImageAnalysisEngine
+except ImportError as e:
+    st.warning(f"Image analysis module not available: {e}")
+    ImageAnalysisEngine = None
+
+try:
     from ml_model_integration import get_ml_predictor
-    # Import Groq-enhanced corroborator with proper path
+except ImportError as e:
+    st.warning(f"ML model integration not available: {e}")
+    def get_ml_predictor():
+        return None
+
+try:
     from part2_document_corroboration.groq_corroborator import get_groq_corroborator
 except ImportError as e:
-    st.error(f"Import error: {e}")
-    # Create a fallback function if import fails
+    st.warning(f"Groq corroborator not available: {e}")
     def get_groq_corroborator():
         return None
 
@@ -148,15 +190,15 @@ class AMLDashboard:
     def load_engines(self):
         """Load all analysis engines"""
         try:
-            self.transaction_engine = TransactionAnalysisEngine()
-            self.alert_manager = AlertManager()
-            self.rules_engine = RegulatoryRulesEngine()
-            self.document_processor = DocumentProcessor()
-            self.image_analyzer = ImageAnalysisEngine()
+            self.transaction_engine = TransactionAnalysisEngine() if TransactionAnalysisEngine else None
+            self.alert_manager = AlertManager() if AlertManager else None
+            self.rules_engine = RegulatoryRulesEngine() if RegulatoryRulesEngine else None
+            self.document_processor = DocumentProcessor() if DocumentProcessor else None
+            self.image_analyzer = ImageAnalysisEngine() if ImageAnalysisEngine else None
             return True
         except Exception as e:
-            st.error(f"Error loading engines: {e}")
-            return False
+            st.warning(f"Some engines could not be loaded: {e}")
+            return True  # Continue even with partial loading
     
     def run(self):
         """Main dashboard function"""
