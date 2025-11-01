@@ -167,8 +167,6 @@ class AMLDashboard:
             page = st.radio("Select Module", [
                 "Dashboard Overview",
                 "Transaction Monitoring",
-                "Alert Management", 
-                "Rules Engine",
                 "Document Corroboration",
                 "Image Analysis",
                 "Reports & Analytics"
@@ -179,10 +177,6 @@ class AMLDashboard:
             self.show_dashboard_overview()
         elif page == "Transaction Monitoring":
             self.show_transaction_monitoring()
-        elif page == "Alert Management":
-            self.show_alert_management()
-        elif page == "Rules Engine":
-            self.show_rules_engine()
         elif page == "Document Corroboration":
             self.show_document_corroboration()
         elif page == "Image Analysis":
@@ -744,7 +738,7 @@ class AMLDashboard:
     
     def display_transaction_alerts(self, alerts):
         """Display transaction alerts with ML model information"""
-        st.subheader("🚨 Generated Alerts")
+        st.subheader("Generated Alerts")
         
         if not alerts:
             st.info("No alerts generated with current threshold settings.")
@@ -778,7 +772,7 @@ class AMLDashboard:
         # Model performance insights
         if 'confidence' in alert_df.columns:
             avg_confidence = alert_df['confidence'].mean()
-            st.info(f"🎯 **Average ML Confidence**: {avg_confidence:.1%} | **Analysis Method**: {'ML-Powered' if ml_predictor and ml_predictor.is_loaded else 'Rule-Based'}")
+            st.info(f" **Average ML Confidence**: {avg_confidence:.1%} | **Analysis Method**: {'ML-Powered' if ml_predictor and ml_predictor.is_loaded else 'Rule-Based'}")
         
         # Enhanced alert table with ML information
         display_columns = ['transaction_id', 'risk_score', 'amount', 'currency', 'alert_type', 'priority']
@@ -805,180 +799,6 @@ class AMLDashboard:
             ),
             use_container_width=True
         )
-    
-    def show_alert_management(self):
-        """Show alert management interface"""
-        st.header("Alert Management")
-        
-        # Team selection
-        selected_team = st.selectbox("Select Team", ["Front", "Compliance", "Legal"])
-        
-        # Alert status filter
-        status_filter = st.multiselect(
-            "Filter by Status",
-            ["Pending", "Acknowledged", "Investigating", "Resolved"],
-            default=["Pending", "Acknowledged", "Investigating"]
-        )
-        
-        # Sample alerts for demo
-        sample_alerts = self.generate_sample_alerts(selected_team)
-        
-        # Filter by status
-        filtered_alerts = [alert for alert in sample_alerts if alert['status'] in status_filter]
-        
-        st.write(f"**{len(filtered_alerts)} alerts for {selected_team} team**")
-        
-        # Display alerts
-        for alert in filtered_alerts:
-            self.display_alert_card(alert)
-    
-    def generate_sample_alerts(self, team):
-        """Generate sample alerts for demo (deterministic)"""
-        try:
-            return SAMPLE_ALERTS.get(team, [])
-        except:
-            # Fallback sample alerts
-            base_alerts = [
-                {
-                    "id": "ALT-20241101-001",
-                    "type": "Large Transaction",
-                    "description": "Transaction of $2.5M detected - requires review",
-                    "customer": "CUST-789012",
-                    "amount": 2500000,
-                    "currency": "USD",
-                    "risk_score": 85,
-                    "status": "Pending",
-                    "created": "2024-11-01 14:30:00",
-                    "target_team": "Compliance"
-                },
-                {
-                    "id": "ALT-20241101-002", 
-                    "type": "PEP Transaction",
-                    "description": "PEP customer transaction requires EDD",
-                    "customer": "CUST-456789",
-                    "amount": 750000,
-                    "currency": "EUR",
-                    "risk_score": 78,
-                    "status": "Investigating",
-                    "created": "2024-11-01 13:45:00",
-                    "target_team": "Front"
-                },
-                {
-                    "id": "ALT-20241101-003",
-                    "type": "Sanctions Hit",
-                    "description": "Potential sanctions screening match detected",
-                    "customer": "CUST-123456",
-                    "amount": 125000,
-                    "currency": "GBP",
-                    "risk_score": 95,
-                    "status": "Pending",
-                    "created": "2024-11-01 12:15:00",
-                    "target_team": "Legal"
-                }
-            ]
-            
-            # Filter by team
-            return [alert for alert in base_alerts if alert['target_team'] == team]
-    
-    def display_alert_card(self, alert):
-        """Display an individual alert card"""
-        # Determine card style based on risk score
-        if alert['risk_score'] >= 90:
-            card_class = "alert-high"
-        elif alert['risk_score'] >= 70:
-            card_class = "alert-medium"  
-        else:
-            card_class = "alert-low"
-        
-        with st.container():
-            st.markdown(f"""
-            <div class="metric-card {card_class}">
-                <h4>Alert: {alert['type']} - {alert['id']}</h4>
-                <p><strong>Risk Score:</strong> {alert['risk_score']}/100</p>
-                <p><strong>Amount:</strong> {alert['amount']:,.2f} {alert['currency']}</p>
-                <p><strong>Customer:</strong> {alert['customer']}</p>
-                <p><strong>Status:</strong> {alert['status']}</p>
-                <p><strong>Description:</strong> {alert['description']}</p>
-                <p><strong>Created:</strong> {alert['created']}</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Action buttons
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                if st.button("Acknowledge", key=f"ack_{alert['id']}"):
-                    st.success("Alert acknowledged")
-            
-            with col2:
-                if st.button("Investigate", key=f"inv_{alert['id']}"):
-                    st.info("Investigation started")
-            
-            with col3:
-                if st.button("Resolve", key=f"res_{alert['id']}"):
-                    st.success("Alert resolved")
-            
-            with col4:
-                if st.button("Escalate", key=f"esc_{alert['id']}"):
-                    st.warning("Alert escalated")
-            
-            st.markdown("---")
-    
-    def show_rules_engine(self):
-        """Show rules engine configuration"""
-        st.header("Regulatory Rules Engine")
-        
-        # Rules overview
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            st.subheader("Active Rules")
-            
-            # Sample rules data
-            rules_data = [
-                {"ID": "MAS-TM-001", "Name": "Large Cash Transaction", "Jurisdiction": "SG", "Status": "Active", "Severity": "High"},
-                {"ID": "HKMA-KYC-001", "Name": "PEP Enhanced Due Diligence", "Jurisdiction": "HK", "Status": "Active", "Severity": "High"},
-                {"ID": "FINMA-TM-001", "Name": "Cross-border Monitoring", "Jurisdiction": "CH", "Status": "Active", "Severity": "Medium"},
-                {"ID": "UNIVERSAL-001", "Name": "High-Value Transaction", "Jurisdiction": "ALL", "Status": "Active", "Severity": "Critical"},
-            ]
-            
-            rules_df = pd.DataFrame(rules_data)
-            st.dataframe(rules_df, use_container_width=True)
-        
-        with col2:
-            st.subheader("Rules by Jurisdiction")
-            
-            jurisdiction_counts = {"SG": 8, "HK": 12, "CH": 6, "Universal": 5}
-            
-            fig = px.bar(
-                x=list(jurisdiction_counts.keys()),
-                y=list(jurisdiction_counts.values()),
-                title="Active Rules by Jurisdiction"
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        
-        # Rule management
-        st.subheader("Rule Management")
-        
-        tab1, tab2, tab3 = st.tabs(["View Rules", "Create Rule", "Edit Rule"])
-        
-        with tab1:
-            selected_jurisdiction = st.selectbox("Filter by Jurisdiction", ["All", "SG", "HK", "CH"])
-            # Display filtered rules here
-            
-        with tab2:
-            st.write("**Create New Rule**")
-            new_rule_name = st.text_input("Rule Name")
-            new_rule_jurisdiction = st.selectbox("Jurisdiction", ["SG", "HK", "CH", "Universal"])
-            new_rule_severity = st.selectbox("Severity", ["Low", "Medium", "High", "Critical"])
-            
-            if st.button("Create Rule"):
-                st.success("Rule created successfully!")
-        
-        with tab3:
-            st.write("**Edit Existing Rule**")
-            rule_to_edit = st.selectbox("Select Rule to Edit", [rule["ID"] for rule in rules_data])
-            # Edit form would go here
     
     def show_document_corroboration(self):
         """Show document corroboration interface"""
@@ -1140,7 +960,7 @@ class AMLDashboard:
     
     def show_image_analysis(self):
         """Show image analysis interface"""
-        st.header("🤖 AI-Powered Image Analysis")
+        st.header(" AI-Powered Image Analysis")
         
         st.write("**Advanced image authenticity verification with Groq Vision AI**")
         st.write("This module uses Groq's Llama 4 Scout vision model to detect AI-generated images, tampering, and other authenticity issues for AML compliance.")
@@ -1212,15 +1032,15 @@ class AMLDashboard:
         # Analysis types explanation
         with st.expander("🔬 AI Analysis Technologies"):
             st.write("""
-            **🤖 Groq Vision AI (Llama 4 Scout)**: Advanced AI model that directly analyzes image content for AI generation detection, unnatural patterns, and document authenticity assessment
+            ** Groq Vision AI (Llama 4 Scout)**: Advanced AI model that directly analyzes image content for AI generation detection, unnatural patterns, and document authenticity assessment
             
-            **📊 Metadata Analysis**: Examines EXIF data for signs of editing, device information, and timestamp inconsistencies
+            ** Metadata Analysis**: Examines EXIF data for signs of editing, device information, and timestamp inconsistencies
             
-            **🎯 AI Generation Detection**: Identifies images created by AI tools like DALL-E, Midjourney, Stable Diffusion using visual pattern recognition
+            ** AI Generation Detection**: Identifies images created by AI tools like DALL-E, Midjourney, Stable Diffusion using visual pattern recognition
             
-            **🔍 Tampering Detection**: Detects copy-paste, splicing, noise inconsistencies, and other digital manipulations
+            ** Tampering Detection**: Detects copy-paste, splicing, noise inconsistencies, and other digital manipulations
             
-            **📈 Pixel Pattern Analysis**: Analyzes noise patterns, edge consistency, compression artifacts, and color distribution anomalies
+            ** Pixel Pattern Analysis**: Analyzes noise patterns, edge consistency, compression artifacts, and color distribution anomalies
             
             **⚖️ Compliance Integration**: Results formatted for AML compliance workflows with specific recommendations for financial document verification
             """)
