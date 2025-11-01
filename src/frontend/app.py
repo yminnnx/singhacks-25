@@ -4,6 +4,15 @@ Streamlit-based web interface for the Julius Baer AML monitoring system
 """
 
 import streamlit as st
+
+# Page configuration - MUST be first Streamlit command
+st.set_page_config(
+    page_title="Julius Baer AML Monitoring System",
+    page_icon="🏦",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -75,14 +84,6 @@ def load_ml_model():
 
 # Load the ML model once
 ml_predictor = load_ml_model()
-
-# Page configuration
-st.set_page_config(
-    page_title="Julius Baer AML Monitoring System",
-    page_icon="🏦",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 # Custom CSS
 st.markdown("""
