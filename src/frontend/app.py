@@ -539,7 +539,7 @@ class AMLDashboard:
                 st.caption("ML model not available")
         
         st.markdown("""
-        **📊 Upload any CSV file for AML analysis**
+        **Upload any CSV file for AML analysis**
         
         The system will automatically detect columns and apply intelligent risk scoring.
         Common column names: `amount`, `customer_id`, `transaction_id`, `channel`, `currency`, etc.
@@ -553,7 +553,7 @@ class AMLDashboard:
         )
         
         # Demo data option
-        use_demo = st.checkbox("🎯 Use Demo Data (if no file uploaded)", value=True)
+        use_demo = st.checkbox("Use Demo Data (if no file uploaded)", value=True)
         
         df = None
         
@@ -570,13 +570,16 @@ class AMLDashboard:
                     with col2:
                         st.metric("Columns", len(df.columns))
                     with col3:
-                        st.metric("Memory", f"{df.memory_usage().sum() / 1024:.1f} KB")
+                        # Corrected memory calculation
+                        mem_usage_mb = df.memory_usage(deep=True).sum() / (1024 * 1024)
+                        st.metric("Memory", f"{mem_usage_mb:.2f} MB")
                     
                     st.write("**Columns detected:**")
+                    # Display columns in a clean, multi-column layout
+                    cols_per_row = 5
+                    cols_list = st.columns(cols_per_row)
                     for i, col in enumerate(df.columns):
-                        if i % 4 == 0:
-                            cols = st.columns(4)
-                        cols[i % 4].write(f"• `{col}`")
+                        cols_list[i % cols_per_row].markdown(f"• `{col}`")
                         
                     # Show sample data
                     st.write("**Sample data:**")
@@ -588,12 +591,13 @@ class AMLDashboard:
                 
         elif use_demo:
             # Load demo data as fallback
+            # Ensure this path is correct for your project structure
             data_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'transactions_mock_1000_for_participants.csv')
             if os.path.exists(data_path):
                 df = pd.read_csv(data_path)
-                st.info(f"📊 Using demo data: {len(df)} transactions")
+                st.info(f"ℹ️ Using demo data: {len(df)} transactions")
             else:
-                st.error("Demo data file not found")
+                st.error(f"❌ Demo data file not found at: {data_path}")
                 return
         else:
             st.info("👆 Please upload a CSV file to begin analysis")
@@ -601,15 +605,16 @@ class AMLDashboard:
 
         if df is not None:
             # Smart column detection and analysis controls
-            st.subheader("🎛️ Analysis Configuration")
+            st.subheader("⚙️ Analysis Configuration")
             
             # Detect key columns automatically
+            # (Assuming self.detect_column is a valid method in your class)
             amount_col = self.detect_column(df, ['amount', 'value', 'sum', 'total', 'transaction_amount'])
             id_col = self.detect_column(df, ['transaction_id', 'id', 'txn_id', 'reference'])
             customer_col = self.detect_column(df, ['customer_id', 'client_id', 'customer', 'user_id'])
             currency_col = self.detect_column(df, ['currency', 'curr', 'ccy'])
             
-            # Store column mappings in session state for SHAP explanations
+            # Store column mappings in session state for consistency
             st.session_state['amount_col'] = amount_col
             st.session_state['id_col'] = id_col
             st.session_state['customer_col'] = customer_col
@@ -618,13 +623,13 @@ class AMLDashboard:
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                risk_threshold = st.slider("🎯 Risk Score Threshold", 0, 100, 70)
+                risk_threshold = st.slider("Risk Score Threshold", 0, 100, 70)
             
             with col2:
                 # Dynamic filter column selection
-                filter_columns = [col for col in df.columns if df[col].dtype == 'object' and df[col].nunique() < 50]
+                filter_columns = [col for col in df.columns if df[col].dtype == 'object' and df[col].nunique() < 50 and df[col].nunique() > 1]
                 if filter_columns:
-                    filter_col = st.selectbox("📍 Filter Column", ['None'] + filter_columns)
+                    filter_col = st.selectbox("Filter Column", ['None'] + filter_columns)
                     if filter_col != 'None':
                         filter_values = st.multiselect(
                             f"Filter by {filter_col}",
@@ -633,14 +638,17 @@ class AMLDashboard:
                         )
                 else:
                     filter_col = 'None'
-                    st.write("No suitable filter columns")
+                    st.caption("No suitable filter columns (object type, <50 unique values)")
             
             with col3:
-                if amount_col:
-                    max_amount = float(df[amount_col].max()) if pd.api.types.is_numeric_dtype(df[amount_col]) else 1000000
-                    amount_threshold = st.number_input("💰 Amount Threshold", value=max_amount * 0.1, step=max_amount * 0.01)
+                if amount_col and pd.api.types.is_numeric_dtype(df[amount_col]):
+                    max_amount = float(df[amount_col].max())
+                    default_amount = max_amount * 0.1 if max_amount > 0 else 100000
+                    amount_threshold = st.number_input(f"💰 Min '{amount_col}'", value=default_amount, step=max_amount * 0.01)
                 else:
-                    amount_threshold = st.number_input("💰 Amount Threshold", value=100000, step=10000)
+                    amount_threshold = st.number_input("💰 Min Amount", value=100000, step=10000)
+                    if amount_col:
+                        st.warning(f"'{amount_col}' not numeric. Using default.")
             
             with col4:
                 analysis_sample = st.number_input("📊 Sample Size", min_value=10, max_value=len(df), value=min(100, len(df)))
@@ -653,8 +661,8 @@ class AMLDashboard:
                 if 'filter_values' in locals() and filter_values:
                     filtered_df = filtered_df[filtered_df[filter_col].isin(filter_values)]
             
-            # Apply amount filter if amount column exists
-            if amount_col and pd.api.types.is_numeric_dtype(df[amount_col]):
+            # Apply amount filter if amount column exists and is numeric
+            if amount_col and pd.api.types.is_numeric_dtype(filtered_df[amount_col]):
                 filtered_df = filtered_df[filtered_df[amount_col] >= amount_threshold]
             
             # Sample the data
@@ -663,8 +671,13 @@ class AMLDashboard:
             st.write(f"**📈 Analysis Preview:** {len(filtered_df)} transactions after filters")
             
             if st.button("🚀 Analyze Transactions", type="primary"):
+                if len(filtered_df) == 0:
+                    st.warning("No data matches the current filters. Please adjust and try again.")
+                    return
+
                 with st.spinner("🤖 Running AI-powered AML analysis..."):
                     # Run intelligent analysis on any CSV format
+                    # (Assuming self.analyze_generic_transactions is a valid method)
                     alerts = self.analyze_generic_transactions(filtered_df, risk_threshold, amount_col, id_col, customer_col)
                     st.session_state.current_alerts = alerts
                 
@@ -691,28 +704,84 @@ class AMLDashboard:
                     recall = ML_PERFORMANCE_METRICS['recall']
                     st.metric("Recall", f"{recall:.1f}%")
             
-            # Transaction details view
+            # --- START: MODIFIED TRANSACTION DETAILS VIEW ---
             st.subheader("📋 Transaction Details")
             
-            # Show sample transactions with smart column display
-            display_cols = []
-            if id_col:
-                display_cols.append(id_col)
-            if amount_col:
-                display_cols.append(amount_col)
-            if customer_col:
-                display_cols.append(customer_col)
-            if currency_col:
-                display_cols.append(currency_col)
-            
-            # Add other interesting columns (limit to 8 total)
-            other_cols = [col for col in filtered_df.columns if col not in display_cols][:8-len(display_cols)]
-            display_cols.extend(other_cols)
-            
-            if display_cols:
-                st.dataframe(filtered_df[display_cols].head(10), use_container_width=True)
-            else:
-                st.dataframe(filtered_df.head(10), use_container_width=True)
+            if len(filtered_df) == 0:
+                st.info("No transactions to display based on current filters.")
+                return
+
+            # Use detected column names, with fallbacks
+            id_col_name = id_col if id_col else 'transaction_id'
+            amount_col_name = amount_col if amount_col else 'amount'
+            currency_col_name = currency_col if currency_col else 'currency'
+            customer_col_name = customer_col if customer_col else 'customer_id'
+
+            # Loop through each transaction and create an expander
+            for idx, row in filtered_df.iterrows():
+                # --- Create title for the expander ---
+                title = "Transaction"
+                if id_col_name in row:
+                    title = f"Transaction {str(row[id_col_name])[:8]}..."
+                
+                if amount_col_name in row and currency_col_name in row and pd.api.types.is_numeric_dtype(row[amount_col_name]):
+                    title += f" - {row[amount_col_name]:,.2f} {row[currency_col_name]}"
+                elif amount_col_name in row and pd.api.types.is_numeric_dtype(row[amount_col_name]):
+                    title += f" - {row[amount_col_name]:,.2f}"
+
+                with st.expander(title):
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.write("**Key Information**")
+                        if customer_col_name in row:
+                            st.write(f"**Customer ID:** {row[customer_col_name]}")
+                        if id_col_name in row:
+                            st.write(f"**Transaction ID:** {row[id_col_name]}")
+                        if amount_col_name in row:
+                            st.write(f"**Amount:** {row[amount_col_name]}")
+                        if currency_col_name in row:
+                            st.write(f"**Currency:** {row[currency_col_name]}")
+                    
+                    with col2:
+                        st.write("**Other Relevant Data**")
+                        # Display other relevant columns
+                        other_cols_to_show = ['channel', 'product_type', 'booking_jurisdiction', 'originator_country', 'beneficiary_country', 'customer_risk_rating', 'customer_is_pep', 'sanctions_screening']
+                        for col in other_cols_to_show:
+                            if col in row:
+                                st.write(f"**{col.replace('_', ' ').title()}:** {row[col]}")
+
+                    # --- START: SHAP BUTTON INTEGRATION ---
+                    st.markdown("---")
+                    
+                    # Add a unique key based on the transaction_id or index
+                    button_key = f"explain_{row[id_col_name]}" if id_col_name in row else f"explain_{idx}"
+                    
+                    if st.button("🔬 Explain Risk (SHAP Analysis)", key=button_key):
+                        with st.spinner("Running SHAP analysis to explain risk..."):
+                            
+                            if ml_predictor and ml_predictor.is_loaded:
+                                # Call the (fixed) explain_instance method
+                                # We pass the full transaction row as a dictionary
+                                trigger_features, _ = ml_predictor.explain_instance(row.to_dict())
+                                
+                                if trigger_features:
+                                    st.write("**Factors Driving Transaction Risk:**")
+                                    st.info("The features below contributed to *increasing* the risk score for this transaction, sorted by highest impact.")
+                                    
+                                    # Create a DataFrame for a clean table display
+                                    explain_df = pd.DataFrame(trigger_features, columns=['Feature', 'SHAP_Value (Risk Impact)'])
+                                    
+                                    # Format the SHAP value for readability
+                                    explain_df['SHAP_Value (Risk Impact)'] = explain_df['SHAP_Value (Risk Impact)'].map('{:,.4f}'.format)
+                                    
+                                    st.dataframe(explain_df, use_container_width=True)
+                                else:
+                                    st.info("No significant positive risk drivers identified by the model (all feature impacts were neutral or negative).")
+                            else:
+                                st.warning("ML model not loaded. Cannot provide SHAP explanations.")
+                    # --- END: SHAP BUTTON INTEGRATION ---
+            # --- END: MODIFIED TRANSACTION DETAILS VIEW ---
     
     def detect_column(self, df, possible_names):
         """Smart column detection by name similarity"""

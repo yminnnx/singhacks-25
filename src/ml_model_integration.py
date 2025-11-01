@@ -209,13 +209,16 @@ class AMLModelPredictor:
                 # Binary classification or single output
                 explanation_values = shap_values.values[0] if hasattr(shap_values, 'values') else shap_values[0]
             
-            # Sort features by absolute impact and get top 5
+            # Filter for features that *increase* risk (positive SHAP value)
             feature_impacts = list(zip(X.columns, explanation_values))
-            top_features = sorted(feature_impacts, key=lambda x: abs(x[1]), reverse=True)[:5]
+            positive_impact_features = [f for f in feature_impacts if f[1] > 0]
+            
+            # Sort them from highest impact (most risky) to lowest
+            trigger_features = sorted(positive_impact_features, key=lambda x: x[1], reverse=True)
             
             # Add transaction-specific context to feature names for better understanding
             interpreted_features = []
-            for feature, impact in top_features:
+            for feature, impact in trigger_features:
                 # Map feature names to more interpretable descriptions
                 if 'amount_log' in feature:
                     amount = transaction_data.get('amount', 0)
@@ -282,8 +285,10 @@ class AMLModelPredictor:
             fallback_explanations.append((f'Channel ({channel})', channel_impact))
             
             # Sort by impact and return top 5
-            fallback_explanations.sort(key=lambda x: abs(x[1]), reverse=True)
-            return fallback_explanations[:5], None
+            positive_fallback = [f for f in fallback_explanations if f[1] > 0]
+            positive_fallback.sort(key=lambda x: x[1], reverse=True)
+            
+            return positive_fallback, None
     
     def batch_predict(self, transactions: pd.DataFrame) -> pd.DataFrame:
         """Predict risk for a batch of transactions"""
