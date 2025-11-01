@@ -382,23 +382,30 @@ class ImageAnalysisEngine:
         # Apply Gaussian blur and subtract to get noise
         blurred = cv2.GaussianBlur(gray_image, (5, 5), 0)
         noise = cv2.absdiff(gray_image, blurred)
-        
-        # Calculate noise statistics in different regions
+
         h, w = gray_image.shape
         regions = [
-            noise[0:h//2, 0:w//2],      # Top-left
-            noise[0:h//2, w//2:w],      # Top-right
-            noise[h//2:h, 0:w//2],      # Bottom-left
-            noise[h//2:h, w//2:w]       # Bottom-right
+            noise[0:h//2, 0:w//2],
+            noise[0:h//2, w//2:w],
+            noise[h//2:h, 0:w//2],
+            noise[h//2:h, w//2:w]
         ]
-        
+
         noise_stats = [np.std(region) for region in regions]
+        noise_mean = np.mean(noise_stats)
         noise_variance = np.var(noise_stats)
-        
+    
+        # Dynamic threshold: depends on image brightness
+        brightness = np.mean(gray_image)
+        adaptive_thresh = 0.02 * brightness + 50
+    
+        inconsistent = noise_variance > adaptive_thresh
+    
         return {
             'region_noise_std': noise_stats,
+            'noise_mean': float(noise_mean),
             'noise_variance': float(noise_variance),
-            'inconsistent_noise': noise_variance > 100  # Threshold for inconsistency
+            'inconsistent_noise': inconsistent
         }
     
     def _analyze_color_distribution(self, hsv_image: np.ndarray) -> Dict[str, Any]:
@@ -409,16 +416,20 @@ class ImageAnalysisEngine:
         v_hist = cv2.calcHist([hsv_image], [2], None, [256], [0, 256])
         
         # Look for unnatural spikes or gaps
-        h_peaks = len([i for i in range(1, 179) if h_hist[i] > h_hist[i-1] and h_hist[i] > h_hist[i+1]])
-        s_variance = np.var(s_hist)
-        v_variance = np.var(v_hist)
+        s_var = np.var(s_hist)
+        v_var = np.var(v_hist)
+        color_balance = np.mean(h_hist) / (np.mean(s_hist) + 1e-6)
+
+        unnatural = (s_var / (v_var + 1e-6) > 2.5) or (color_balance < 0.5 or color_balance > 1.5)
+    
         
         return {
-            'hue_peaks': int(h_peaks),
-            'saturation_variance': float(s_variance),
-            'value_variance': float(v_variance),
-            'unnatural_distribution': h_peaks > 20 or s_variance > 1000000
+            'color_balance_ratio' : float(color_balance),
+            'saturation_variance': float(s_var),
+            'value_variance': float(v_var),
+            'unnatural_distribution': unnatural
         }
+    
     
     def _analyze_edge_consistency(self, gray_image: np.ndarray) -> Dict[str, Any]:
         """Analyze edge consistency across the image"""
@@ -830,32 +841,22 @@ class ImageAnalysisEngine:
             AnalysisType.TAMPERING_DETECTION: 0.25
         }
         
-        weighted_confidence = 0.0
-        critical_flags = 0
-        high_risk_flags = 0
-        
-        for analysis in analyses:
-            weight = weights.get(analysis.analysis_type, 0.2)
-            weighted_confidence += analysis.confidence * weight
-            
-            if analysis.result in [AuthenticityResult.AI_GENERATED, AuthenticityResult.TAMPERED]:
-                critical_flags += 1
-            elif analysis.result == AuthenticityResult.LIKELY_FAKE:
-                critical_flags += 1
-            elif analysis.result == AuthenticityResult.SUSPICIOUS:
-                high_risk_flags += 1
-        
-        # Determine overall result
-        if critical_flags >= 2:
-            overall_result = AuthenticityResult.LIKELY_FAKE
-        elif critical_flags >= 1:
-            overall_result = AuthenticityResult.SUSPICIOUS
-        elif high_risk_flags >= 2:
-            overall_result = AuthenticityResult.SUSPICIOUS
+        weighted_score = sum(a.confidence * weights[a.analysis_type] for a in analyses)
+        random_variance = random.uniform(-3, 3)  # add minor variability
+    
+        final_conf = np.clip(weighted_score + random_variance, 0, 100)
+    
+        # Determine result more smoothly
+        if final_conf > 85:
+            overall = AuthenticityResult.LIKELY_FAKE
+        elif final_conf > 70:
+            overall = AuthenticityResult.SUSPICIOUS
+        elif final_conf > 55:
+            overall = AuthenticityResult.AUTHENTIC
         else:
-            overall_result = AuthenticityResult.AUTHENTIC
-        
-        return overall_result, weighted_confidence
+            overall = AuthenticityResult.AUTHENTIC
+    
+        return overall, final_conf
     
     def _extract_risk_indicators(self, analyses: List[ImageAnalysisResult]) -> List[str]:
         """Extract all risk indicators from analyses"""
