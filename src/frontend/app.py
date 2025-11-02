@@ -215,7 +215,6 @@ class AMLDashboard:
             page = st.radio("Select Module", [
                 "Dashboard Overview",
                 "Transaction Monitoring",
-                "Case Management — Scoring",
                 "Document Corroboration",
                 "Image Analysis",
                 "Reports & Analytics"
@@ -225,8 +224,6 @@ class AMLDashboard:
         if page == "Dashboard Overview":
             self.show_dashboard_overview()
         elif page == "Transaction Monitoring":
-            self.show_transaction_monitoring()
-        elif page == "Case Management — Scoring":
             self.show_case_management()
         elif page == "Document Corroboration":
             self.show_document_corroboration()
@@ -944,16 +941,25 @@ class AMLDashboard:
         transaction_data['transaction_id'] = str(row.get(id_col, f"TXN_{row.name}")) if id_col else f"TXN_{row.name}"
         transaction_data['customer_id'] = str(row.get(customer_col, f"CUST_{row.name}")) if customer_col else f"CUST_{row.name}"
         
-        # Amount handling
-        if amount_col and pd.api.types.is_numeric_dtype(row[amount_col] if hasattr(row, '__getitem__') else 0):
-            transaction_data['amount'] = float(row.get(amount_col, 0))
+        # --- START: FIXED AMOUNT HANDLING ---
+        # This new logic trusts the 'amount_col' you detected and cleans the value
+        if amount_col and amount_col in row:
+            try:
+                # Clean the string (remove commas, etc.) and convert to float
+                amount_val = str(row[amount_col]).replace(',', '')
+                transaction_data['amount'] = float(amount_val)
+            except (ValueError, TypeError):
+                # If conversion fails, default to 0
+                transaction_data['amount'] = 0.0
         else:
-            # Try to find any numeric column that might be an amount
-            numeric_cols = [col for col in row.index if pd.api.types.is_numeric_dtype(row[col])]
+            # Fallback if no amount column was detected
+            # Try to find any numeric column that isn't 'score'
+            numeric_cols = [col for col in row.index if pd.api.types.is_numeric_dtype(row[col]) and 'score' not in col.lower()]
             if numeric_cols:
                 transaction_data['amount'] = float(row[numeric_cols[0]])
             else:
-                transaction_data['amount'] = 0
+                transaction_data['amount'] = 0.0
+        # --- END: FIXED AMOUNT HANDLING ---
         
         # Initialize with smart defaults based on transaction characteristics
         transaction_data['currency'] = 'USD'
@@ -1258,7 +1264,7 @@ class AMLDashboard:
             return "Risk Pattern"
         
     def show_case_management(self):
-        st.header("📊 Case Management — Risk Scoring")
+        st.header(" Transaction Monitoring")
         
         st.markdown("""
         **AI-Powered Case Risk Assessment**
@@ -1314,9 +1320,24 @@ class AMLDashboard:
                     with st.spinner("🤖 Computing ML risk scores..."):
                         # Safely compute scores with error handling for each row
                         scores = []
+                        
+                        # Detect columns once before the loop
+                        amount_col = self.detect_column(df, ['amount'])
+                        id_col = self.detect_column(df, ['case_id', 'transaction_id'])
+                        customer_col = self.detect_column(df, ['customer_id'])
+                        currency_col = self.detect_column(df, ['currency', 'curr', 'ccy']) # Also detect currency
+                        
+                        # Save detected columns to session state for the "Explain" function
+                        st.session_state['amount_col'] = amount_col
+                        st.session_state['id_col'] = id_col
+                        st.session_state['customer_col'] = customer_col
+                        st.session_state['currency_col'] = currency_col # Save currency
+                        
                         for idx, row in df.iterrows():
                             try:
-                                result = ml_predictor.predict_transaction_risk(row.to_dict())
+                                # Use prepare_generic_transaction_data to ensure features match
+                                tx_data = self.prepare_generic_transaction_data(row, amount_col, id_col, customer_col)
+                                result = ml_predictor.predict_transaction_risk(tx_data)
                                 scores.append(result["risk_score"])
                             except Exception as e:
                                 st.warning(f"Failed to score row {idx}: {e}")
@@ -1328,7 +1349,7 @@ class AMLDashboard:
                     st.error(f"❌ Failed to compute ML scores: {e}")
                     # Fallback to simple scoring
                     if 'amount' in df.columns:
-                        df["score"] = df["amount"].apply(lambda x: min(100.0, x / 10000))
+                        df["score"] = df["amount"].apply(lambda x: min(100.0, float(x) / 10000 if pd.api.types.is_numeric_dtype(x) else 50.0))
                         st.warning("⚠️ Using fallback amount-based scoring")
                     else:
                         df["score"] = [50.0] * len(df)  # Default scores
@@ -1336,7 +1357,7 @@ class AMLDashboard:
             else:
                 # fallback to deterministic calculation
                 if 'amount' in df.columns:
-                    df["score"] = df["amount"].apply(lambda x: min(100.0, x / 10000))
+                    df["score"] = df["amount"].apply(lambda x: min(100.0, float(x) / 10000 if pd.api.types.is_numeric_dtype(x) else 50.0))
                     st.warning("⚠️ ML model not active — using amount-based risk score")
                 else:
                     df["score"] = [50.0] * len(df)  # Default moderate risk
@@ -1359,38 +1380,43 @@ class AMLDashboard:
         with col4:
             st.metric("Risk Threshold", f"{threshold:.2f}")
 
-        # Show risk distribution
-        import plotly.express as px
-        fig = px.histogram(df, x="score", nbins=20, title="Risk Score Distribution")
-        fig.add_vline(x=threshold, line_dash="dash", line_color="red", 
-                     annotation_text=f"Threshold: {threshold:.2f}")
-        st.plotly_chart(fig, use_container_width=True)
+        # --- RISK DISTRIBUTION GRAPH AND DATAFRAME ARE REMOVED ---
 
-        # Render table with risk color coding
+        # Render interactive list
         st.subheader("📋 Case Risk Assessment Results")
         
-        # Add risk level column
-        df["risk_level"] = df["score"].apply(
-            lambda x: "🔴 High" if x > threshold else "🟡 Medium" if x > threshold * 0.6 else "🟢 Low"
-        )
-        
-        # Display table
-        display_columns = ["risk_level", "score"] + [col for col in df.columns if col not in ["risk_level", "score"]]
-        st.dataframe(
-            df[display_columns].style.format({"score": "{:.2f}"}),
-            use_container_width=True
-        )
+        # --- Add a header for the interactive list ---
+        st.markdown("---")
+        h_col1, h_col2, h_col3, h_col4, h_col5 = st.columns([1, 1, 1, 3, 1])
+        h_col1.markdown("**Case #**")
+        h_col2.markdown("**Score**")
+        h_col3.markdown("**Label**")
+        h_col4.markdown("**Case ID**")
+        h_col5.markdown("**Explain**")
+        st.markdown("---")
+
+        # --- START: MODIFIED CASE LIST LOOP ---
         for i, row in df.iterrows():
-            col1, col2, col3, col4, col5 = st.columns([1,1,1,2,1])
+            col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 3, 1])
             label = "TRUE_HIT" if row["score"] >= threshold else "FALSE_HIT"
             color = "red" if label == "TRUE_HIT" else "green"
+            
             col1.write(f"**{i+1}**")
             col2.write(f"{row['score']:.4f}")
             col3.markdown(f"<span style='color:{color}'>{label}</span>", unsafe_allow_html=True)
-            col4.write("Click Explain")
+            
+            # --- "Details" Column (now just text) ---
+            with col4:
+                case_id = row.get('case_id', row.get('transaction_id', f'Case {i+1}'))
+                # Just write the Case ID as text
+                st.write(case_id)
+
+            # --- "Explain" Button ---
+            # This button triggers the existing show_shap_explanation function
             if col5.button("Explain", key=f"exp{i}"):
                 self.show_shap_explanation(row)
-    
+        # --- END: MODIFIED CASE LIST LOOP ---
+                
     def show_shap_explanation(self, row):
         st.subheader(f"🔍 AI Explanation for Case {row.get('transaction_id', row.name)}")
 
@@ -1406,15 +1432,27 @@ class AMLDashboard:
             
             # Prepare input features EXACTLY the same way as model prediction
             transaction_data = self.prepare_generic_transaction_data(row, amount_col, id_col, customer_col)
-            top_features, shap_values = ml_predictor.explain_instance(transaction_data)
+            
+            # This function call now returns all positive-impact features
+            # (assuming ml_model_integration.py was updated as we discussed)
+            trigger_features, shap_values = ml_predictor.explain_instance(transaction_data)
 
-            # Display top factors
-            st.markdown("### 🎯 Top Feature Contributors")
-            for i, (feature, val) in enumerate(top_features, 1):
-                impact = "🔺 Increased risk" if val > 0 else "🔻 Decreased risk"
-                color = "red" if val > 0 else "green"
-                magnitude = "Strong" if abs(val) > 0.3 else "Moderate" if abs(val) > 0.1 else "Weak"
-                st.markdown(f"**{i}. {feature}**: {impact} (*{magnitude}* impact: {val:+.3f})")
+            # --- START: MODIFIED DISPLAY LOGIC ---
+            st.markdown("### 🎯 Factors Driving Transaction Risk")
+            
+            if trigger_features:
+                st.info("The features below contributed to *increasing* the risk score for this transaction, sorted by highest impact.")
+                
+                # Create a DataFrame for a clean table display
+                explain_df = pd.DataFrame(trigger_features, columns=['Feature', 'SHAP_Value (Risk Impact)'])
+                
+                # Format the SHAP value for readability
+                explain_df['SHAP_Value (Risk Impact)'] = explain_df['SHAP_Value (Risk Impact)'].map('{:,.4f}'.format)
+                
+                st.dataframe(explain_df, use_container_width=True)
+            else:
+                st.info("No significant positive risk drivers identified by the model (all feature impacts were neutral or negative).")
+            # --- END: MODIFIED DISPLAY LOGIC ---
             
             # Show transaction details for context
             with st.expander("📋 Transaction Details Used for Analysis"):
@@ -1436,8 +1474,11 @@ class AMLDashboard:
             if shap is not None and shap_values is not None:
                 try:
                     import matplotlib.pyplot as plt
+                    st.markdown("---")
+                    st.write("**Visual Risk Breakdown (Waterfall Plot):**")
                     plt.figure(figsize=(10, 6))
-                    shap.plots.waterfall(shap_values[0], show=False)
+                    # Assuming shap_values[0] is the correct object for the waterfall plot
+                    shap.plots.waterfall(shap_values[0], show=False) 
                     st.pyplot(plt.gcf(), bbox_inches='tight')
                     plt.close()
                 except Exception as e:
