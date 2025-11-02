@@ -686,23 +686,6 @@ class AMLDashboard:
             # Display analysis results
             if st.session_state.current_alerts:
                 self.display_transaction_alerts(st.session_state.current_alerts)
-                
-                # Show model performance for this analysis
-                st.subheader("📊 Model Performance for Current Analysis")
-                
-                perf_col1, perf_col2, perf_col3 = st.columns(3)
-                
-                with perf_col1:
-                    accuracy = ML_PERFORMANCE_METRICS['accuracy']
-                    st.metric("Real-time Accuracy", f"{accuracy:.1f}%")
-                
-                with perf_col2:
-                    precision = ML_PERFORMANCE_METRICS['precision']
-                    st.metric("Precision", f"{precision:.1f}%")
-                
-                with perf_col3:
-                    recall = ML_PERFORMANCE_METRICS['recall']
-                    st.metric("Recall", f"{recall:.1f}%")
             
             # --- START: MODIFIED TRANSACTION DETAILS VIEW ---
             st.subheader("📋 Transaction Details")
@@ -717,70 +700,141 @@ class AMLDashboard:
             currency_col_name = currency_col if currency_col else 'currency'
             customer_col_name = customer_col if customer_col else 'customer_id'
 
-            # Loop through each transaction and create an expander
-            for idx, row in filtered_df.iterrows():
-                # --- Create title for the expander ---
-                title = "Transaction"
-                if id_col_name in row:
-                    title = f"Transaction {str(row[id_col_name])[:8]}..."
+            # Create a single dropdown table for all transactions
+            with st.expander("📋 All Transaction Details", expanded=False):
+                st.caption(f"Showing {len(filtered_df)} transactions after filtering")
                 
-                if amount_col_name in row and currency_col_name in row and pd.api.types.is_numeric_dtype(row[amount_col_name]):
-                    title += f" - {row[amount_col_name]:,.2f} {row[currency_col_name]}"
-                elif amount_col_name in row and pd.api.types.is_numeric_dtype(row[amount_col_name]):
-                    title += f" - {row[amount_col_name]:,.2f}"
-
-                with st.expander(title):
-                    col1, col2 = st.columns(2)
+                # Prepare data for table display
+                display_df = filtered_df.copy()
+                
+                # Select relevant columns for display
+                display_columns = []
+                column_mapping = {}
+                
+                # Add key columns if they exist
+                if id_col_name in display_df.columns:
+                    display_columns.append(id_col_name)
+                    column_mapping[id_col_name] = 'Transaction ID'
+                
+                if customer_col_name in display_df.columns:
+                    display_columns.append(customer_col_name)
+                    column_mapping[customer_col_name] = 'Customer ID'
+                
+                if amount_col_name in display_df.columns:
+                    display_columns.append(amount_col_name)
+                    column_mapping[amount_col_name] = 'Amount'
+                
+                if currency_col_name in display_df.columns:
+                    display_columns.append(currency_col_name)
+                    column_mapping[currency_col_name] = 'Currency'
+                
+                # Add other relevant columns if they exist
+                other_cols_to_show = ['channel', 'product_type', 'booking_jurisdiction', 'originator_country', 'beneficiary_country', 'customer_risk_rating', 'customer_is_pep', 'sanctions_screening']
+                for col in other_cols_to_show:
+                    if col in display_df.columns:
+                        display_columns.append(col)
+                        column_mapping[col] = col.replace('_', ' ').title()
+                
+                # Create display dataframe with selected columns
+                if display_columns:
+                    table_df = display_df[display_columns].copy()
                     
-                    with col1:
-                        st.write("**Key Information**")
-                        if customer_col_name in row:
-                            st.write(f"**Customer ID:** {row[customer_col_name]}")
-                        if id_col_name in row:
-                            st.write(f"**Transaction ID:** {row[id_col_name]}")
-                        if amount_col_name in row:
-                            st.write(f"**Amount:** {row[amount_col_name]}")
-                        if currency_col_name in row:
-                            st.write(f"**Currency:** {row[currency_col_name]}")
+                    # Rename columns for better display
+                    table_df = table_df.rename(columns=column_mapping)
                     
-                    with col2:
-                        st.write("**Other Relevant Data**")
-                        # Display other relevant columns
-                        other_cols_to_show = ['channel', 'product_type', 'booking_jurisdiction', 'originator_country', 'beneficiary_country', 'customer_risk_rating', 'customer_is_pep', 'sanctions_screening']
-                        for col in other_cols_to_show:
-                            if col in row:
-                                st.write(f"**{col.replace('_', ' ').title()}:** {row[col]}")
-
-                    # --- START: SHAP BUTTON INTEGRATION ---
-                    st.markdown("---")
+                    # Format data for better readability
+                    if 'Transaction ID' in table_df.columns:
+                        table_df['Transaction ID'] = table_df['Transaction ID'].apply(lambda x: f"{str(x)[:12]}..." if len(str(x)) > 12 else str(x))
                     
-                    # Add a unique key based on the transaction_id or index
-                    button_key = f"explain_{row[id_col_name]}" if id_col_name in row else f"explain_{idx}"
+                    if 'Amount' in table_df.columns and pd.api.types.is_numeric_dtype(table_df['Amount']):
+                        table_df['Amount'] = table_df['Amount'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "N/A")
                     
-                    if st.button("🔬 Explain Risk (SHAP Analysis)", key=button_key):
-                        with st.spinner("Running SHAP analysis to explain risk..."):
-                            
-                            if ml_predictor and ml_predictor.is_loaded:
-                                # Call the (fixed) explain_instance method
-                                # We pass the full transaction row as a dictionary
-                                trigger_features, _ = ml_predictor.explain_instance(row.to_dict())
-                                
-                                if trigger_features:
-                                    st.write("**Factors Driving Transaction Risk:**")
-                                    st.info("The features below contributed to *increasing* the risk score for this transaction, sorted by highest impact.")
-                                    
-                                    # Create a DataFrame for a clean table display
-                                    explain_df = pd.DataFrame(trigger_features, columns=['Feature', 'SHAP_Value (Risk Impact)'])
-                                    
-                                    # Format the SHAP value for readability
-                                    explain_df['SHAP_Value (Risk Impact)'] = explain_df['SHAP_Value (Risk Impact)'].map('{:,.4f}'.format)
-                                    
-                                    st.dataframe(explain_df, use_container_width=True)
-                                else:
-                                    st.info("No significant positive risk drivers identified by the model (all feature impacts were neutral or negative).")
-                            else:
-                                st.warning("ML model not loaded. Cannot provide SHAP explanations.")
-                    # --- END: SHAP BUTTON INTEGRATION ---
+                    if 'Customer Is Pep' in table_df.columns:
+                        table_df['Customer Is Pep'] = table_df['Customer Is Pep'].apply(lambda x: 'Yes' if x else 'No')
+                    
+                    # Add search functionality
+                    st.markdown("### 🔍 Search Transactions")
+                    
+                    search_col1, search_col2 = st.columns([3, 1])
+                    
+                    with search_col1:
+                        search_term = st.text_input(
+                            "Search across all columns:",
+                            placeholder="Enter any value (e.g., CUST-337880, GBP, SWIFT, cash_deposit, etc.)",
+                            help="Search will look for matches in all visible columns"
+                        )
+                    
+                    with search_col2:
+                        st.write("")  # Add some spacing
+                        st.write("")  # Add some spacing
+                        clear_search = st.button("🗑️ Clear Search", type="secondary")
+                    
+                    # Apply search filter
+                    filtered_table_df = table_df.copy()
+                    
+                    if search_term and not clear_search:
+                        # Create a mask for search across all columns
+                        search_mask = pd.Series([False] * len(table_df))
+                        
+                        for column in table_df.columns:
+                            # Convert column to string and search (case-insensitive)
+                            column_mask = table_df[column].astype(str).str.contains(search_term, case=False, na=False)
+                            search_mask = search_mask | column_mask
+                        
+                        filtered_table_df = table_df[search_mask]
+                        
+                        # Show search results summary
+                        if len(filtered_table_df) > 0:
+                            st.success(f"🎯 Found {len(filtered_table_df)} transactions matching '{search_term}'")
+                        else:
+                            st.warning(f"❌ No transactions found matching '{search_term}'")
+                    elif clear_search:
+                        st.success("🔄 Search cleared - showing all transactions")
+                    
+                    # Display the interactive table (filtered or full)
+                    st.dataframe(
+                        filtered_table_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Amount": st.column_config.TextColumn(
+                                "Amount",
+                                help="Transaction amount (formatted)"
+                            ),
+                            "Customer Risk Rating": st.column_config.SelectboxColumn(
+                                "Risk Rating",
+                                help="Customer risk classification",
+                                options=["Low", "Medium", "High"]
+                            )
+                        }
+                    )
+                    
+                    # Enhanced tips with search information
+                    st.info("💡 **Tips**: \n- Click column headers to sort \n- Use the search box to find specific transactions \n- Search works across all columns (Transaction ID, Customer ID, Currency, Channel, etc.)")
+                    
+                    # Show filtered vs total count
+                    if search_term and not clear_search:
+                        st.caption(f"Showing {len(filtered_table_df)} of {len(table_df)} transactions")
+                    else:
+                        st.caption(f"Showing all {len(table_df)} transactions")
+                else:
+                    st.warning("No standard transaction columns found in the uploaded data.")
+                
+                # Add bulk SHAP analysis option
+                st.markdown("---")
+                st.subheader("🔬 Bulk Risk Analysis")
+                
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    st.write("Run SHAP analysis on all transactions to understand risk drivers:")
+                
+                with col2:
+                    if st.button("🔬 Analyze All Transactions", type="secondary"):
+                        if ml_predictor and ml_predictor.is_loaded:
+                            with st.spinner("Running bulk SHAP analysis..."):
+                                st.info("Bulk SHAP analysis feature coming soon!")
+                        else:
+                            st.warning("ML model not loaded. Cannot provide SHAP analysis.")
             # --- END: MODIFIED TRANSACTION DETAILS VIEW ---
     
     def detect_column(self, df, possible_names):
